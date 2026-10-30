@@ -753,6 +753,8 @@ export type ControlDispatchOutcome =
 // ── Factory ────────────────────────────────────────────────────────────────
 
 export interface XdtHelperMcpDeps {
+  /** Host-level kill switch for every companion-only helper tool. */
+  enableCompanionTools?: boolean;
   logger?: LiziMcpLogger;
   appUpdate?: AppUpdateCallbacks;
   grokLogin?: GrokLoginCallbacks;
@@ -893,8 +895,9 @@ export function createXdtHelperMcpServer(
     const surface = await deps.resolveSurface({ sessionId }).catch(() => 'restricted' as const);
     if (surface === 'bot' || surface === 'bot-main') {
       // Companion identity adds self-management, not a narrower ordinary tool surface.
-      const categories = remoteBotOnly ? new Set(['auth', 'cindy']) : defaultCategories;
-      return { categories: new Set([...categories, 'bots']) };
+      const categories = new Set(remoteBotOnly ? ['auth', 'cindy'] : defaultCategories);
+      if (deps.enableCompanionTools !== false) categories.add('bots');
+      return { categories };
     }
     if (surface === 'restricted') return none;
     return allow(remoteBotOnly ? new Set(['auth', 'cindy']) : defaultCategories);

@@ -5,6 +5,7 @@ import {
   type RemoteCollectionListRequest,
 } from '@cindy/device-link';
 import { useAuth } from '@/contexts/AuthContext';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 import { isDeviceLinkRemotePushCurrent } from '@/lib/remoteDataOwnerPushFence';
 import { useDeviceLinkDeviceList } from '@/features/device-link/useDeviceLinkDeviceList';
 import { revokedDevicesStore } from '@/features/device-link/revokedDevicesStore';
@@ -36,25 +37,26 @@ const empty: RemoteBot[] = [];
 
 /** Non-hook read for entry routing (island / notification clicks); empty while signed out. */
 export function readRemoteBots(): readonly RemoteBot[] {
-  return owner ? snapshot : empty;
+  return owner && isCompanionsEnabled(window.electronAPI?.platform ?? '') ? snapshot : empty;
 }
 
 export function useRemoteBots(): readonly RemoteBot[] {
   const { dataOwnerId, isAuthenticated } = useAuth();
   const rows = useSyncExternalStore(subscribe, () => snapshot);
-  return isAuthenticated && owner === dataOwnerId ? rows : empty;
+  return isAuthenticated && owner === dataOwnerId && isCompanionsEnabled(window.electronAPI?.platform ?? '') ? rows : empty;
 }
 
 /** Identity discovery is independent of a home computer's roster being online. */
 export function useRemoteCindyIds(): ReadonlySet<string> {
   const { dataOwnerId, isAuthenticated } = useAuth();
   const ids = useSyncExternalStore(subscribe, () => cindyIds);
-  return isAuthenticated && owner === dataOwnerId ? ids : EMPTY_CINDY_IDS;
+  return isAuthenticated && owner === dataOwnerId && isCompanionsEnabled(window.electronAPI?.platform ?? '')
+    ? ids : EMPTY_CINDY_IDS;
 }
 const EMPTY_CINDY_IDS: ReadonlySet<string> = new Set();
 
 /** One subscription owner in the main window; a failed host cannot erase another host. */
-export function useRemoteBotSync(): void {
+export function useRemoteBotSync(enabled = true): void {
   const { dataOwnerId, isAuthenticated } = useAuth();
   const devices = useDeviceLinkDeviceList();
   const cloud = useCompanionCloud();
@@ -64,6 +66,10 @@ export function useRemoteBotSync(): void {
     revokedDevicesStore.getSnapshot,
   );
   useEffect(() => {
+    if (!enabled || !isCompanionsEnabled(window.electronAPI?.platform ?? '')) {
+      if (owner) { owner = null; publish([]); }
+      return;
+    }
     const nextOwner = isAuthenticated ? (dataOwnerId ?? null) : null;
     if (owner !== nextOwner) {
       owner = nextOwner;
@@ -216,11 +222,11 @@ export function useRemoteBotSync(): void {
       offStatus();
       timers.forEach(clearTimeout);
     };
-  }, [dataOwnerId, isAuthenticated, devices, revoked]);
+  }, [dataOwnerId, enabled, isAuthenticated, devices, revoked]);
   useEffect(() => {
     const api = companionCloudApi();
     const requestOwner = isAuthenticated ? dataOwnerId : null;
-    if (!requestOwner || !cloud.enabled || !api?.listCindyCopies) return;
+    if (!enabled || !requestOwner || !cloud.enabled || !api?.listCindyCopies) return;
     let live = true;
     void api.listCindyCopies().then(copies => {
       if (!live || owner !== requestOwner) return;
@@ -228,7 +234,7 @@ export function useRemoteBotSync(): void {
       publish(snapshot);
     }).catch(() => { /* Cached template identity remains usable offline. */ });
     return () => { live = false; };
-  }, [dataOwnerId, isAuthenticated, cloud.enabled, actorsKey]);
+  }, [dataOwnerId, enabled, isAuthenticated, cloud.enabled, actorsKey]);
 
 }
 

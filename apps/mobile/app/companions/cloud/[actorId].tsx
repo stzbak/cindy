@@ -1,5 +1,7 @@
 import { deviceDisplayName } from '@/device-link/deviceName';
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
+import { Platform } from 'react-native';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { useAuth } from '@/auth/AuthContext';
 import { CloudCompanionScreen } from '@/session/CloudCompanionScreen';
 
@@ -13,6 +15,10 @@ function firstParam(value: string | string[] | undefined): string {
  * computer is the companion's main computer.
  */
 export default function CloudCompanionRoute() {
+  return isCompanionsEnabled(Platform.OS) ? <CloudCompanionRouteContent /> : <Redirect href="/devices" />;
+}
+
+function CloudCompanionRouteContent() {
   const params = useLocalSearchParams<{ actorId?: string | string[]; botId?: string | string[]; deviceId?: string | string[];
     deviceName?: string | string[]; title?: string | string[] }>();
   const { accountGeneration } = useAuth();

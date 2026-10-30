@@ -120,6 +120,7 @@ import { bindingStore, executeDetach } from './binding';
 import { IM_DEFAULT_EFFORT_OVERRIDES, IM_DEFAULT_SETTINGS, IM_DEFAULT_SETTINGS_CHANNELS } from '../../shared/imDefaultSettings';
 import { getAuthState } from '../authManager';
 import { getUpdateStatus, isUpdateRelaunchImminent } from '../updateService';
+import { isCompanionsEnabled } from '../../shared/personalProfile';
 
 import { createLogger } from '../logger';
 import { assertTrustedAppRendererEvent } from '../security/trustedAppRenderer';
@@ -665,7 +666,9 @@ async function initializeImConnection(): Promise<void> {
   activateImAccountBoundary();
   await im.init();
   // 伙伴自有连接跟在设置页那份后面起; 各自失败只记日志。
-  await startBotImConnections();
+  // Personal Windows keeps ordinary IM settings/connections, but never restores
+  // credentials or transports owned by a companion.
+  if (isCompanionsEnabled(process.platform)) await startBotImConnections();
 }
 
 /**

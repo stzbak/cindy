@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useIsFocused, useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { goBackGuarded } from '@/utils/backGuard';
@@ -17,6 +17,7 @@ import { leaveIncomingShareChooser, incomingShareDestination, incomingShareText,
 import { useTeammateRoster } from '@/session/useTeammateRoster';
 import { teammateResourceRoute } from '@/session/teammateNavigation';
 import { remoteSessionStore } from '@/session/remoteSessionStore';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import type { RemoteSession } from '@/session/types';
 import { fontWeight, lineHeight, radius, spacing, typeScale, useTheme, useThemedStyles, type ThemeColors } from '@/theme';
 
@@ -42,7 +43,8 @@ export default function IncomingShareScreen() {
   const { accountGeneration } = useAuth();
   const { readDeviceList, openLink, invoke, status, presenceVersion } = useDeviceLink();
   const revoked = useRevokedDevices();
-  const roster = useTeammateRoster(focused && !!batch);
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
+  const roster = useTeammateRoster(companionsEnabled && focused && !!batch);
   const [query, setQuery] = useState('');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,13 +86,15 @@ export default function IncomingShareScreen() {
   const needle = query.normalize('NFKC').trim().toLocaleLowerCase(i18n.language);
   const rows = useMemo<Row[]>(() => {
     const matches = (title: string) => title.normalize('NFKC').toLocaleLowerCase(i18n.language).includes(needle);
-    const result: Row[] = [{ key: 'new', kind: 'new' },
-      { key: 'companions', kind: 'heading', label: t('composer.incomingShare.companions') }];
-    for (const item of roster.items) if (matches(resolveRemoteText(item.item.display.title, i18n.language)))
-      result.push({ key: `companion:${item.key}`, kind: 'companion', item });
-    if (roster.loading) result.push({ key: 'companions-loading', kind: 'status', loading: true });
-    else if (!roster.items.length) result.push({ key: 'companions-empty', kind: 'status', label: t('composer.incomingShare.noCompanions') });
-    if (roster.error) result.push({ key: 'companions-retry', kind: 'status', retry: 'roster', label: t('composer.incomingShare.retry') });
+    const result: Row[] = [{ key: 'new', kind: 'new' }];
+    if (companionsEnabled) {
+      result.push({ key: 'companions', kind: 'heading', label: t('composer.incomingShare.companions') });
+      for (const item of roster.items) if (matches(resolveRemoteText(item.item.display.title, i18n.language)))
+        result.push({ key: `companion:${item.key}`, kind: 'companion', item });
+      if (roster.loading) result.push({ key: 'companions-loading', kind: 'status', loading: true });
+      else if (!roster.items.length) result.push({ key: 'companions-empty', kind: 'status', label: t('composer.incomingShare.noCompanions') });
+      if (roster.error) result.push({ key: 'companions-retry', kind: 'status', retry: 'roster', label: t('composer.incomingShare.retry') });
+    }
     result.push({ key: 'tasks', kind: 'heading', label: t('composer.incomingShare.tasks') });
     for (const item of tasks) if (matches(item.session.title))
       result.push({ key: `task:${incomingShareDestination(item.deviceId, item.session.id)}`, kind: 'task', item });
@@ -98,7 +102,7 @@ export default function IncomingShareScreen() {
     else if (!tasks.length) result.push({ key: 'tasks-empty', kind: 'status', label: t('composer.incomingShare.noTasks') });
     if (error) result.push({ key: 'tasks-retry', kind: 'status', retry: 'tasks', label: t('composer.incomingShare.retry') });
     return result;
-  }, [needle, i18n.language, t, roster.items, roster.loading, roster.error, tasks, loading, error]);
+  }, [needle, i18n.language, t, companionsEnabled, roster.items, roster.loading, roster.error, tasks, loading, error]);
   const text = batch ? incomingShareText(batch.payloads) : '';
   const files = batch?.payloads.filter(item => item.shareType !== 'text' && item.shareType !== 'url') ?? [];
   const handoffBatchId = useRef<string | null>(null);

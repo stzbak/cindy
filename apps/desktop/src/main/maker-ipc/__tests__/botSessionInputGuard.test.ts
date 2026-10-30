@@ -12,6 +12,15 @@ describe('Bot task input guard', () => {
     ).toBeNull();
   });
 
+  it('keeps old bot history read-only on Windows', () => {
+    expect(
+      botSessionInputBlockReason(
+        { source: 'bot', role: 'canonical', profileStatus: 'active' },
+        'win32',
+      ),
+    ).toContain('Personal 版停用');
+  });
+
   it('blocks a canonical task while its Bot is paused', () => {
     expect(
       botSessionInputBlockReason({ source: 'bot', role: 'canonical', profileStatus: 'paused' }),

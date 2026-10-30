@@ -7,6 +7,7 @@ import type { Session } from '@/lib/ccAgent.types';
 import { BotAvatar } from './BotAvatar';
 import { useSessionDelegatingBot } from './botFollowScopes';
 import { ensureBotProfilesLoaded } from './botStore';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 /**
  * A Bot's background task opens in the ordinary task view; this quiet chip in
@@ -15,13 +16,14 @@ import { ensureBotProfilesLoaded } from './botStore';
  * task the Bot took over keeps the sidebar's follow mark and no chip.
  */
 export function BotTaskOwnerChip({ session }: { session: Session }) {
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const { t } = useTranslation();
   const navigate = useNavigate();
   useEffect(() => {
-    void ensureBotProfilesLoaded().catch(() => {});
-  }, []);
+    if (companionsEnabled) void ensureBotProfilesLoaded().catch(() => {});
+  }, [companionsEnabled]);
   const bot = useSessionDelegatingBot(session);
-  if (!bot) return null;
+  if (!companionsEnabled || !bot) return null;
   return (
     <button
       type="button"

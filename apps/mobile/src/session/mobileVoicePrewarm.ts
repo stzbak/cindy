@@ -1,5 +1,7 @@
 import type { AsrProvider } from '@cindy/voice-input-core';
+import { Platform } from 'react-native';
 import type { ApiFetchOptions } from '@/api/client';
+import { isComposerVoiceInputEnabled } from '@/config/personalProfile';
 import type { StoredMobileVoiceCredential } from '@/session/mobileVoiceCredentialStore';
 import { createMobileAsrProvider } from '@/session/mobileRealtimeAsrProvider';
 import { prewarmMobileRealtimeAudio } from '@/session/mobileRealtimeAudio';
@@ -55,6 +57,7 @@ export function prewarmMobileVoiceStart(
     apiFetch: <T>(path: string, options: Omit<ApiFetchOptions, 'token'>) => Promise<T>;
   },
 ): void {
+  if (!isComposerVoiceInputEnabled(Platform.OS)) return;
   prewarmMobileRealtimeAudio();
   if (
     pendingPrewarm

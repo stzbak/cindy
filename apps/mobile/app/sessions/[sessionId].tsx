@@ -27,6 +27,7 @@ import { useSessionPaneLayout } from '@/session/ResidentHomeList';
 import { ComposerExpandButton } from '@/session/ComposerExpandButton';
 import { nativeComposerAvailable } from '@/session/ComposerNativeInput';
 import { getActiveMobileSessionRealm } from '@/config/env';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { FailedScheduleNotice } from '@/session/FailedScheduleNotice';
 import { shouldShowFailedScheduleNotice, type FailedScheduleRunSnapshot } from '@cindy/maker-shared/schedule-model';
 import type { TokenSpeedSnapshot } from '@cindy/maker-shared/usage-format';
@@ -84,7 +85,7 @@ import {
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
 import { renderConversationShareHtmlToPng } from 'xdt-screenshot-monitor';
-import { Stack, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { Redirect, Stack, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject, type SetStateAction } from 'react';
 import {
   ActivityIndicator,
@@ -1022,6 +1023,10 @@ function composerDraftScopeKey(sessionId: string, routeDraft: string | null): st
 }
 
 export default function SessionScreen() {
+  const params = useLocalSearchParams<{ resourceKind?: string | string[] }>();
+  if (!isCompanionsEnabled(Platform.OS) && readRouteParam(params.resourceKind) === 'bot') {
+    return <Redirect href="/devices" />;
+  }
   return <SessionTaskLayout>{chrome => <SessionScreenContent {...chrome} />}</SessionTaskLayout>;
 }
 
@@ -5534,6 +5539,7 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
 
   const startVoiceRecording = useCallback(async () => {
     const requestedAt = Date.now();
+    if (!shouldShowMobileVoiceUi(Platform.OS)) return;
     if (
       voicePermissionRequestInFlightRef.current
       || voiceStartupInFlightRef.current
@@ -5944,6 +5950,7 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
   // current recording rather than start a new one.
   const handleVoiceButtonPressIn = useCallback(() => {
     voiceStartedOnPressInRef.current = false;
+    if (!shouldShowMobileVoiceUi(Platform.OS)) return;
     if (voiceIsProcessing) return;
     if (voiceRecordingActiveRef.current || voiceState === 'listening') return;
     if (!deviceId || !isMobileRealtimeAudioAvailable()) return;

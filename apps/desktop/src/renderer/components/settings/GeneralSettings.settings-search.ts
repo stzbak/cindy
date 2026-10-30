@@ -1,4 +1,5 @@
 import type { SettingsSearchModule } from './settingsSearchTypes';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 /** Static search metadata owned by this settings module; no component mounting or IPC. */
 export default {
@@ -9,7 +10,7 @@ export default {
     { id: 'general.user', tab: 'general', targetId: 'settings-search-target-general-user', titleKey: 'settings.sections.user', sectionKey: 'settings.sections.user' },
     { id: 'general.language', tab: 'general', targetId: 'settings-search-target-general-language', titleKey: 'settings.sections.language', sectionKey: 'settings.sections.language' },
     { id: 'general.notifications', tab: 'general', targetId: 'settings-notifications', titleKey: 'settings.sections.notifications', sectionKey: 'settings.sections.notifications' },
-    { id: 'general.bots', tab: 'general', targetId: 'settings-bots', titleKey: 'settings.sections.bots', sectionKey: 'settings.sections.bots' },
+    { id: 'general.bots', tab: 'general', targetId: 'settings-bots', titleKey: 'settings.sections.bots', sectionKey: 'settings.sections.bots', isVisible: ({ platform }) => isCompanionsEnabled(platform) },
     { id: 'general.windowBehavior', tab: 'general', targetId: 'settings-window-behavior', titleKey: 'settings.sections.windowBehavior', sectionKey: 'settings.sections.windowBehavior' },
     { id: 'general.composer', tab: 'general', targetId: 'settings-composer', titleKey: 'settings.sections.composer', sectionKey: 'settings.sections.composer' },
     { id: 'general.collaboration', tab: 'general', targetId: 'settings-collaboration', titleKey: 'settings.sections.collaboration', sectionKey: 'settings.sections.collaboration', aliases: ['collaboration'] },

@@ -82,6 +82,7 @@ import { useViewedBotSessionId } from '@/features/bots/useViewedBotSessionId';
 import { sharedTaskErrorKey } from '@/features/device-link/sharedTaskCompatibility';
 import { isSharedTaskPeer } from '@cindy/device-link';
 import { stripTrailingPathSeparators } from '../../../shared/pathText';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 import {
   SessionAttentionUrgencyProvider,
   useSessionAttentionUrgencySet,
@@ -443,8 +444,10 @@ export function CCAgentSidebarUpper() {
   // F-PJ-10：filter.status 决定后端 fetch 时是否带 ?status=archived|all
   const hiddenProjects = useHiddenProjects();
   const { hiddenProjectKeys, initialSnapshot: sidebarSettingsSnapshot } = hiddenProjects;
-  const creatorOptions = useTaskCreatorOptions();
-  const filter = useSidebarFilter(hiddenProjectKeys, sidebarSettingsSnapshot, creatorOptions);
+  const companionsEnabled = isCompanionsEnabled(localPlatform);
+  const allCreatorOptions = useTaskCreatorOptions();
+  const creatorOptions = companionsEnabled ? allCreatorOptions : [];
+  const filter = useSidebarFilter(hiddenProjectKeys, sidebarSettingsSnapshot, creatorOptions, companionsEnabled);
   const includeArchived = filter.status;
   const sessionsHook = useCCSessions({ includeArchived });
   const { sessions: allSessionsForAttentionRaw } = useCCSessions({ includeArchived: 'all' });
@@ -918,6 +921,7 @@ function ExpandedView({
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const localPlatform = window.electronAPI.platform;
+  const companionsEnabled = isCompanionsEnabled(localPlatform);
   const sessions = useMemo(
     () => CINDY_MAKE_ENABLED
       ? sessionsHook.sessions
@@ -1687,7 +1691,10 @@ function ExpandedView({
   // query 非空时同一份顶部导航 sticky 钉住,结果替换下方列表,不再用 overlay 盖输入框。
   const { search, openSignal } = useConversationSearchContext();
   // 伙伴 / 群聊并入侧栏总搜索,命中排在会话结果之前。
-  const teammateMatches = useTeammateSearchMatches(search.trimmed, search.lockedSessionGroupName);
+  const teammateMatches = useTeammateSearchMatches(
+    companionsEnabled ? search.trimmed : '',
+    search.lockedSessionGroupName,
+  );
   const gcProjectKeys = useMemo(
     () => projectUniverse.projects.map((p) => p.projectKey),
     [projectUniverse.projects],
@@ -2012,7 +2019,7 @@ function ExpandedView({
       },
       [
         ...allProjectGroups.projects.flatMap((project) => project.sessions),
-        ...groups.bots.flatMap((bot) => bot.sessions),
+        ...(companionsEnabled ? groups.bots.flatMap((bot) => bot.sessions) : []),
         ...visibleDialogues,
         ...visibleUnclassified,
       ],
@@ -2039,6 +2046,7 @@ function ExpandedView({
   }, [
     activeSessionId,
     attentionKinds,
+    companionsEnabled,
     displayRunningSessionIds,
     groups.bots,
     remoteActivityRevision,
@@ -3779,7 +3787,7 @@ function ExpandedView({
           {/* 搜索时原列表只隐藏、不卸载:置顶段折叠等本地 state 才能保住。 */}
           <div hidden={searchActive} className="flex flex-col gap-2">
             {/* 伙伴段:侧栏第一层,固定在置顶上方(2026-10-13 定稿),/bots 与 /cc-agent 共用。 */}
-            <TeammatesSection />
+            {companionsEnabled && <TeammatesSection />}
             <SharedTasksSection activeSessionId={activeSessionId} localSessions={sessions}
               runningSessionIds={displayRunningSessionIds} attachedSessionIds={attachedSessionIds} notifications={sidebarNotifications}
               onAction={handleActionClick} onRename={handleRename} onTogglePin={handleTogglePin}
@@ -3930,7 +3938,7 @@ function ExpandedView({
                   projects={visibleProjectsWithVendor}
                   dialogues={visibleDialogues}
                   dialogueActionSessions={dialogueActionSessions}
-                  bots={groups.bots}
+                  bots={companionsEnabled ? groups.bots : []}
                   onOpenBot={(botId) => navigate(`/bots/${botId}`)}
                   allKnownProjects={visibleProjectUniverse}
                   dialogueCount={allGroups.dialogues.length}
@@ -4089,9 +4097,11 @@ function CollapsedView({
   const location = useLocation();
   const isCollapsed = useSidebarCollapsedState();
   const projectFilterRequest = useConversationSearchRequest();
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   // 收窄态的伙伴入口:展开态里伙伴是置顶上方的一段,rail 放不下整段,
   // 用一个带未读数的图标直达伙伴(上次看的伙伴,没有则 Cindy)。
-  const teammateUnread = useNavigationAttention().teammates;
+  const navigationAttention = useNavigationAttention();
+  const teammateUnread = companionsEnabled ? navigationAttention.teammates : 0;
   // 复用主视图历史:回到上次看的伙伴 / 群聊 / 远程伙伴的完整路径,没有记录才进 /bots。
   const { navigateToView } = useActiveMainView();
   const onBotsRoute = location.pathname === '/bots' || location.pathname.startsWith('/bots/');
@@ -4167,16 +4177,18 @@ function CollapsedView({
         )}
       />
 
-      <SidebarIconButton
-        icon={Bot}
-        label={t('sidebar.tabs.bots')}
-        active={onBotsRoute}
-        aria-description={teammateUnread > 0 ? t('sidebar.teammateUnreadCount', { count: teammateUnread }) : undefined}
-        badge={teammateUnread > 0 ? (
-          <NavigationCountBadge count={teammateUnread} label={t('sidebar.teammateUnreadCount', { count: teammateUnread })} />
-        ) : undefined}
-        onClick={() => navigateToView('bots')}
-      />
+      {companionsEnabled && (
+        <SidebarIconButton
+          icon={Bot}
+          label={t('sidebar.tabs.bots')}
+          active={onBotsRoute}
+          aria-description={teammateUnread > 0 ? t('sidebar.teammateUnreadCount', { count: teammateUnread }) : undefined}
+          badge={teammateUnread > 0 ? (
+            <NavigationCountBadge count={teammateUnread} label={t('sidebar.teammateUnreadCount', { count: teammateUnread })} />
+          ) : undefined}
+          onClick={() => navigateToView('bots')}
+        />
+      )}
 
       <div className="my-[7px] h-px w-[22px] shrink-0 bg-sidebar-border" aria-hidden />
 

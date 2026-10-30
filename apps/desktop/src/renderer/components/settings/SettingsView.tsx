@@ -70,6 +70,7 @@ import { canAccessBillingSettings } from './billingVisibility';
 import { canAccessUsageSettings } from './usageVisibility';
 import { UsageHistorySection } from './usage/UsageHistorySection';
 import { CURRENT_CINDY_REGION } from '../../../shared/brandRegion';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 const DEFAULT_SETTINGS_MENU_WIDTH = 260;
 
@@ -86,6 +87,7 @@ export function SettingsView() {
   const { mode, dataOwnerId, user } = useAuth();
   const menuWidth = outletContext?.sidebarWidth ?? DEFAULT_SETTINGS_MENU_WIDTH;
   const isMac = window.electronAPI?.platform === 'darwin';
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const [helpAssistantOpen, setHelpAssistantOpen] = useState(false);
   const workingDir = useSyncExternalStore(
     subscribeToLastWorkingDir,
@@ -397,13 +399,15 @@ export function SettingsView() {
 
                     {/* Section — 伙伴（功能级设置：怎么提醒你 + 带走/接回一个伙伴）。
                         单个伙伴的性格、记忆、能力与日程仍在 TA 自己的设置页里。 */}
-                    <section
-                      id="settings-bots"
-                      className="py-[18px]"
-                      aria-label={t('settings.sections.bots')}
-                    >
-                      <BotsGlobalSettingsSection />
-                    </section>
+                    {companionsEnabled && (
+                      <section
+                        id="settings-bots"
+                        className="py-[18px]"
+                        aria-label={t('settings.sections.bots')}
+                      >
+                        <BotsGlobalSettingsSection />
+                      </section>
+                    )}
 
                     {/* Section — Collaboration. */}
                     <section

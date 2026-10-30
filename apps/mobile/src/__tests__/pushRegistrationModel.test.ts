@@ -81,6 +81,15 @@ describe('parseNotificationDeepLink', () => {
     const link = parseNotificationDeepLink({ deepLink: '/companions/groups/g-1?deviceId=d-1' })!;
     expect(notificationRecoveryRoute(link, 'id:n-1')).toBe('/companions/groups/g-1?deviceId=d-1&notificationResponse=id%3An-1');
   });
+
+  it('关闭伙伴功能时忽略群聊深链，但保留普通任务深链', () => {
+    expect(parseNotificationDeepLink(
+      { deepLink: '/companions/groups/g-1?deviceId=d-1' }, false,
+    )).toBeNull();
+    expect(parseNotificationDeepLink(
+      { deepLink: '/sessions/s-1?deviceId=d-1' }, false,
+    )).toBe('/sessions/s-1?deviceId=d-1');
+  });
 });
 
 describe('parseNotificationResponseDeepLink', () => {

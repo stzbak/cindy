@@ -15,6 +15,7 @@ import {
   type DevServerEnvironment,
 } from '@/config/devServerEnvironment';
 import { getActiveSelfHostedRelay } from '@/device-link/selfHostedRelayRouting';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import Notifications from './nativeNotifications';
 import { buildPushTokenRegistrationBody, parseNotificationResponseDeepLink } from './pushRegistrationModel';
 
@@ -292,7 +293,7 @@ export async function writePushEnabled(enabled: boolean): Promise<void> {
 export function configureForegroundNotificationBehavior(isReading: (path: string) => boolean = () => false): void {
   Notifications.setNotificationHandler({
     handleNotification: async notification => {
-      const route = parseNotificationResponseDeepLink({ notification });
+      const route = parseNotificationResponseDeepLink({ notification }, isCompanionsEnabled(Platform.OS));
       const show = !!route?.startsWith('/companions/groups/') && !isReading(route);
       return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false };
     },
