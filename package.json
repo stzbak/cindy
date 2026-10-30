@@ -150,7 +150,10 @@
     "test:peer-transfer": "node scripts/peer-transfer-acceptance.mjs",
     "ci:scheduler-guard": "node scripts/scheduler-ci-guard.mjs",
     "pctx": "node packages/project-context/dist/cli.js",
-    "pctx:build": "pnpm --filter project-context build"
+    "pctx:build": "pnpm --filter project-context build",
+    "personal:sync-upstream": "node scripts/personal/sync-upstream.mjs",
+    "personal:test-sync": "node --test scripts/personal/__tests__/sync-upstream.test.mjs scripts/personal/__tests__/patch-boundary.test.mjs",
+    "personal:verify": "node scripts/personal/verify-profile.mjs"
   },
   "dependencies": {
     "gray-matter": "^4.0.3"
