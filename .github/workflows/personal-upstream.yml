@@ -1,0 +1,321 @@
+name: personal-upstream
+
+on:
+  schedule:
+    - cron: '45 23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: personal-upstream-sync
+  cancel-in-progress: false
+
+env:
+  XDT_SKIP_AGENT_BIN_INSTALL: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  ELECTRON_OVERRIDE_DIST_PATH: '${{ github.workspace }}/.electron-stub-dist'
+  NODE_OPTIONS: '--max-old-space-size=8192'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      status: ${{ steps.result.outputs.status }}
+      changed: ${{ steps.result.outputs.changed }}
+      upstream_sha: ${{ steps.result.outputs.upstream_sha }}
+      candidate_sha: ${{ steps.result.outputs.candidate_sha }}
+    steps:
+      - name: Checkout Personal branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: personal
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Rebase Personal commit stack
+        id: sync
+        continue-on-error: true
+        run: node scripts/personal/sync-upstream.mjs --result-file "$RUNNER_TEMP/personal-sync.json"
+
+      - name: Read sync result
+        id: result
+        if: always()
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const file = process.env.RUNNER_TEMP + '/personal-sync.json';
+          const result = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const output = process.env.GITHUB_OUTPUT;
+          const lines = [
+            'status=' + result.status,
+            'changed=' + (result.status === 'rebased' ? 'true' : 'false'),
+            'upstream_sha=' + result.upstreamSha,
+            'candidate_sha=' + result.currentHead,
+          ];
+          fs.appendFileSync(output, lines.join('\n') + '\n');
+          const summary = [
+            '## Personal upstream sync',
+            '',
+            '- Status: ' + result.status,
+            '- Upstream: ' + (result.upstreamSha || '(unknown)'),
+            '- Previous HEAD: ' + (result.previousHead || '(unknown)'),
+            '- Current HEAD: ' + (result.currentHead || '(unknown)'),
+            '- Commits replayed: ' + result.commitsReplayed,
+          ];
+          if (result.conflictFiles.length) {
+            summary.push('', 'Conflict files:', ...result.conflictFiles.map((file) => '- ' + file));
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join('\n') + '\n');
+          if (!['rebased', 'up-to-date'].includes(result.status)) process.exit(1);
+          NODE
+
+      - name: Push isolated candidate branch
+        if: steps.result.outputs.changed == 'true'
+        run: git push --force origin HEAD:refs/heads/automation/upstream-sync-staging
+
+  verify:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.sync.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify upstream sync script
+        run: pnpm personal:test-sync
+
+      - name: Verify Personal profile
+        env:
+          PERSONAL_UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+        run: pnpm personal:verify
+
+  windows-build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.sync.outputs.candidate_sha }}
+          fetch-depth: 0
+          lfs: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          CINDY_WIN_SIGN_CMD: ${{ secrets.CINDY_WIN_SIGN_CMD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CINDY_WIN_SIGN_CMD)) {
+            pnpm release:package -- --platform win32 --arch x64 --region global --no-sign
+          } else {
+            pnpm release:package -- --platform win32 --arch x64 --region global
+          }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cindy-personal-windows-${{ github.run_id }}
+          path: release/artifacts/global/unversioned/win32-x64/**
+          if-no-files-found: error
+
+  android-build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.sync.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Materialize Android signing files
+        env:
+          PERSONAL_MOBILE_CONFIG_JSON: ${{ secrets.PERSONAL_MOBILE_CONFIG_JSON }}
+          PERSONAL_ANDROID_KEYSTORE_BASE64: ${{ secrets.PERSONAL_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const raw = process.env.PERSONAL_MOBILE_CONFIG_JSON;
+          const encodedKeystore = process.env.PERSONAL_ANDROID_KEYSTORE_BASE64;
+          if (!raw) throw new Error('Missing repository secret PERSONAL_MOBILE_CONFIG_JSON');
+          if (!encodedKeystore) throw new Error('Missing repository secret PERSONAL_ANDROID_KEYSTORE_BASE64');
+          const config = JSON.parse(raw);
+          if (!config.cn || !config.cn.androidSigning) throw new Error('Android CN signing config is incomplete');
+          const keystorePath = path.join(process.env.RUNNER_TEMP, 'personal-android.keystore');
+          config.cn.androidSigning.keystorePath = keystorePath;
+          fs.writeFileSync('apps/mobile/scripts/self-host-regions.json', JSON.stringify(config, null, 2) + '\n');
+          fs.writeFileSync(keystorePath, Buffer.from(encodedKeystore, 'base64'), { mode: 0o600 });
+          NODE
+
+      - name: Build signed Android APK
+        env:
+          XDT_ANDROID_KEYSTORE_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEYSTORE_PASSWORD_CN }}
+          XDT_ANDROID_KEY_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEY_PASSWORD_CN }}
+        run: pnpm mobile:build:android -- --region cn --execute --skip-git-gate --artifacts apk --out "$RUNNER_TEMP/android-artifacts"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cindy-personal-android-${{ github.run_id }}
+          path: ${{ runner.temp }}/android-artifacts/*.apk
+          if-no-files-found: error
+
+  open-pr:
+    needs: [sync, verify, windows-build, android-build]
+    if: >-
+      needs.sync.outputs.changed == 'true' &&
+      needs.verify.result == 'success' &&
+      needs.windows-build.result == 'success' &&
+      needs.android-build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.sync.outputs.candidate_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.PERSONAL_AUTOMATION_TOKEN }}
+
+      - name: Create or update draft PR
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_AUTOMATION_TOKEN }}
+          UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+          CANDIDATE_SHA: ${{ needs.sync.outputs.candidate_sha }}
+        shell: bash
+        run: |
+          test -n "$GH_TOKEN" || { echo "Missing repository secret PERSONAL_AUTOMATION_TOKEN"; exit 1; }
+          git push --force origin HEAD:refs/heads/automation/upstream-sync
+          title="Personal: sync upstream ${UPSTREAM_SHA:0:12}"
+          body="$RUNNER_TEMP/personal-pr.md"
+          cat > "$body" <<BODY
+          ## Personal upstream sync
+
+          - Official main: ${UPSTREAM_SHA}
+          - Personal candidate: ${CANDIDATE_SHA}
+          - Windows installer: built successfully (unsigned unless CINDY_WIN_SIGN_CMD is configured)
+          - Android CN APK: built and signed successfully
+          - Profile typechecks and focused regression tests: passed
+
+          Official CI will run again against this draft PR. Review the source diff and device checks before merging. The automation does not promote or merge the candidate branch.
+          BODY
+          number=$(gh pr list --head automation/upstream-sync --base personal --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body-file "$body"
+          else
+            gh pr create --draft --base personal --head automation/upstream-sync --title "$title" --body-file "$body"
+          fi
+
+  report-failure:
+    needs: [sync, verify, windows-build, android-build, open-pr]
+    if: always() && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open or update automation failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SYNC_RESULT: ${{ needs.sync.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          WINDOWS_RESULT: ${{ needs.windows-build.result }}
+          ANDROID_RESULT: ${{ needs.android-build.result }}
+          PR_RESULT: ${{ needs.open-pr.result }}
+        shell: bash
+        run: |
+          title='[Personal upstream] automation failed'
+          body="$RUNNER_TEMP/personal-failure.md"
+          cat > "$body" <<BODY
+          The Personal upstream automation did not complete.
+
+          - Sync: ${SYNC_RESULT}
+          - Verify: ${VERIFY_RESULT}
+          - Windows build: ${WINDOWS_RESULT}
+          - Android build: ${ANDROID_RESULT}
+          - Draft PR: ${PR_RESULT}
+          - Run: ${RUN_URL}
+
+          Resolve the linked run failure, then dispatch the workflow again. No automatic merge or promotion was performed.
+          BODY
+          number=$(gh issue list --state open --search '"[Personal upstream] automation failed" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file "$body"
+          else
+            gh issue create --title "$title" --body-file "$body"
+          fi
