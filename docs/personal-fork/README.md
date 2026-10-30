@@ -47,7 +47,6 @@ Local commands:
 
 The workflow uses these repository secrets:
 
-- `PERSONAL_AUTOMATION_TOKEN`: a fine-grained GitHub token used to create the draft PR. This token is required because PRs created with the workflow's built-in token do not trigger the normal PR CI workflow.
 - `PERSONAL_MOBILE_CONFIG_JSON`: the full JSON content of `apps/mobile/scripts/self-host-regions.json`, including the CN package identity, TapDB values, and Android signing alias.
 - `PERSONAL_ANDROID_KEYSTORE_BASE64`: the Android signing keystore encoded as base64.
 - `XDT_ANDROID_KEYSTORE_PASSWORD_CN`: the Android keystore password.
@@ -77,4 +76,4 @@ The automation compares the candidate with the fetched official commit before ru
 
 The guard is intentionally strict. If a future change genuinely needs to cross one of these boundaries, update the guard and its tests in the same reviewed commit instead of bypassing the failure.
 
-`PERSONAL_AUTOMATION_TOKEN` should be a fine-grained token limited to `stzbak/cindy` with repository contents read/write and pull-request read/write access. Store it as an Actions secret. The other Android secrets contain credentials or signing material and must never be committed or pasted into build logs.
+The workflow uses the repository-scoped built-in `GITHUB_TOKEN` for branch pushes, draft PRs, and failure issues. Enable **Allow GitHub Actions to create and approve pull requests** in repository Actions settings. GitHub suppresses follow-on PR CI for PRs created with this token; the workflow's own typechecks and builds are therefore the required validation. Android secrets contain credentials or signing material and must never be committed or pasted into build logs.
