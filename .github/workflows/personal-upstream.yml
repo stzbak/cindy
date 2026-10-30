@@ -255,16 +255,15 @@ jobs:
         with:
           ref: ${{ needs.sync.outputs.candidate_sha }}
           fetch-depth: 0
-          token: ${{ secrets.PERSONAL_AUTOMATION_TOKEN }}
+          token: ${{ github.token }}
 
       - name: Create or update draft PR
         env:
-          GH_TOKEN: ${{ secrets.PERSONAL_AUTOMATION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
           CANDIDATE_SHA: ${{ needs.sync.outputs.candidate_sha }}
         shell: bash
         run: |
-          test -n "$GH_TOKEN" || { echo "Missing repository secret PERSONAL_AUTOMATION_TOKEN"; exit 1; }
           git push --force origin HEAD:refs/heads/automation/upstream-sync
           title="Personal: sync upstream ${UPSTREAM_SHA:0:12}"
           body="$RUNNER_TEMP/personal-pr.md"
@@ -277,7 +276,7 @@ jobs:
           - Android CN APK: built and signed successfully
           - Profile typechecks and focused regression tests: passed
 
-          Official CI will run again against this draft PR. Review the source diff and device checks before merging. The automation does not promote or merge the candidate branch.
+          This workflow already validates the candidate. GitHub suppresses follow-on CI for draft PRs created with the built-in token, so review the linked run, source diff, and device checks before merging. The automation does not promote or merge the candidate branch.
           BODY
           number=$(gh pr list --head automation/upstream-sync --base personal --state open --json number --jq '.[0].number // empty')
           if [ -n "$number" ]; then
