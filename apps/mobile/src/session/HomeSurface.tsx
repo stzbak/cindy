@@ -73,6 +73,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useAuth } from '@/auth/AuthContext';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { HomeTeammatesSection, useHomeTeammatesSectionContext } from './HomeTeammatesSection';
 import { HomeRosterProvider } from './HomeRosterContext';
 import { createDisclosureListCell, DisclosureGroupView, DisclosureItem, ListDisclosureScope, useDisclosurePrepare, useListDisclosureTransition } from './listDisclosureTransition';
@@ -479,6 +480,7 @@ export function MobileHome(props: MobileHomeProps) {
 }
 
 function HomeScreenContent({ active = true, width, newSessionInSystemBar = false, newSessionInHeader = false, onSelectSession, runNavigation, newSessionActionRef }: MobileHomeProps) {
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
   const ownedSharedTasks = useSharedTasks();
   // The retained page and its visible sidebar must never release each other's subscriptions.
   const HOME_LIST_SUBSCRIPTION_OWNER = `device-list:${useId()}`;
@@ -2182,7 +2184,9 @@ function HomeScreenContent({ active = true, width, newSessionInSystemBar = false
   const cloudTeammates = useCloudCompanionHome(false);
   const cloudTeammateIds = useMemo(() => new Set(cloudTeammates.actors.filter(actor => actor.kind === 'bot').map(actor => actor.externalId)), [cloudTeammates.actors]);
   const cindyTeammateIds = useMemo(() => new Set(cloudTeammates.cindyIds), [cloudTeammates.cindyIds]);
-  const effectiveTeammateFilter = useMemo(() => normalizeTaskTeammateSelection(teammateFilter, cloudTeammateIds, cindyTeammateIds), [teammateFilter, cloudTeammateIds, cindyTeammateIds]);
+  const effectiveTeammateFilter = useMemo(() => companionsEnabled
+    ? normalizeTaskTeammateSelection(teammateFilter, cloudTeammateIds, cindyTeammateIds) : 'all',
+  [companionsEnabled, teammateFilter, cloudTeammateIds, cindyTeammateIds]);
   const teammateOptions = useMemo(() => taskTeammateOptions(
     cloudCompanionRows(teammatesSectionContext.shared?.roster.items ?? [], cloudTeammates.actors, cloudTeammates.deviceNames),
     cloudTeammateIds, i18nInstance.language, cindyTeammateIds,
@@ -2998,10 +3002,11 @@ function HomeScreenContent({ active = true, width, newSessionInSystemBar = false
         title: project.title,
       })),
       teammates: teammateOptions,
+      companionsEnabled,
       state: displayMenuState,
       t,
     }),
-    [displayMenuState, teammateOptions, projectFilterUniverse.chats, projectFilterUniverse.projects, selectedDeviceId, t],
+    [companionsEnabled, displayMenuState, teammateOptions, projectFilterUniverse.chats, projectFilterUniverse.projects, selectedDeviceId, t],
   );
   const handleDisplayAction = useCallback((id: string) => {
     const patch = homeDisplayActionPatch(id, displayMenuState);
@@ -3054,14 +3059,14 @@ function HomeScreenContent({ active = true, width, newSessionInSystemBar = false
         }}
         sections={sections}
         ListHeaderComponent={<>
-        <HomeTeammatesSection context={teammatesSectionContext} active={active} refreshKey={teammatesRefreshKey}
+        {companionsEnabled ? <HomeTeammatesSection context={teammatesSectionContext} active={active} refreshKey={teammatesRefreshKey}
           push={guardedPush}
           // Independent of the computer-connection guide: server group chats and cloud companions need no computer.
           visible={indexedSearch.activeFilterCount === 0 && statusFilter !== 'archived'}
           query={searchQuery}
           // Shared group and project blocks draw their own full-width top line.
           showFooter={sharedRows.length === 0 && !isBlockHomeRow(sections[0]?.data[0])}
-          runDisclosure={runDisclosure} prepareDisclosure={prepareListDisclosure} />
+          runDisclosure={runDisclosure} prepareDisclosure={prepareListDisclosure} /> : null}
         {sharedRows.length > 0 ? <DisclosureItem clip style={styles.projectGroup} testID="home.sharedGroup">
           <Pressable
             accessibilityRole="button"

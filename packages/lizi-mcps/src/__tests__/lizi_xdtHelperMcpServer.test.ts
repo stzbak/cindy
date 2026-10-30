@@ -862,6 +862,32 @@ describe("cindy_helper MCP server", () => {
     }
   });
 
+  it("hides companion commands when the host disables companion tools", async () => {
+    const callback = vi.fn(async () => ({ ok: false as const, errorCode: "UNEXPECTED", message: "must not run" }));
+    const server = createXdtHelperMcpServer({
+      enableCompanionTools: false,
+      resolveSurface: async () => "bot",
+      botMessaging: { messageAgent: callback, checkMessage: callback, sendToUser: callback },
+      botProfiles: { create: callback },
+    }, { agentKind: "codex", workingDir: "/repo", sessionId: "bot-main" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "helper-companion-disabled", version: "0.0.0" });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      const overview = parsePayload(await client.callTool({ name: "list_tools", arguments: {} }));
+      const categories = (overview.categories as Array<{ name: string }>).map((category) => category.name);
+      expect(categories).not.toContain("bots");
+      expect(parsePayload(await client.callTool({ name: "list_tools", arguments: { category: "bots" } })))
+        .toMatchObject({ ok: false, errorCode: "CAPABILITY_NOT_AVAILABLE" });
+      expect(parsePayload(await client.callTool({ name: "call_tool", arguments: { name: "send_to_user", args: {} } })))
+        .toMatchObject({ ok: false, errorCode: "CAPABILITY_NOT_AVAILABLE" });
+      expect(callback).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("grants Bots only the named project tools, not the rest of control or history", async () => {
     let surface: "bot" | "default" = "bot";
     const createProject = vi.fn(async () => ({

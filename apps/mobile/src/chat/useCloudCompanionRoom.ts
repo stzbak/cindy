@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import type { BotGroupAttachment } from '@cindy/maker-shared/botGroupChat';
 import { chatAccessLost, type ChatMessage } from './chatServerClient';
 import { useChatClient } from './useChatServer';
 import { peekCloudConversation, readCloudConversation, cacheCloudConversation, forgetCloudConversation, subscribeCloudConversationInvalidation } from './cloudConversationCache';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 /** Same name-keyed room operation as the desktop (sha256 hex of the room name). */
 const sha256Hex = (text: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text, { encoding: Crypto.CryptoEncoding.HEX });
@@ -18,11 +19,12 @@ type RoomState = {
 
 /** The companion's read-only 1:1 cloud conversation: the latest page, then older pages on demand. */
 export function useCloudCompanionRoom(actorId: string, name: string, enabled: boolean) {
+  const activeEnabled = enabled && isCompanionsEnabled(Platform.OS);
   const api = useChatClient();
   const identity = `${api.owner}:${actorId}`;
   const active = useRef(identity); active.current = identity;
   const initial = (): RoomState => ({ identity, roomId: null, messages: [], before: null, status: 'loading', loadingOlder: false });
-  const [state, setState] = useState<RoomState>(() => { const saved = enabled ? peekCloudConversation(actorId) : null;
+  const [state, setState] = useState<RoomState>(() => { const saved = activeEnabled ? peekCloudConversation(actorId) : null;
     return saved ? { ...initial(), ...saved, status: 'ready' } : initial(); });
   const latest = useRef(state); latest.current = state;
   const generation = useRef(0);
@@ -34,16 +36,16 @@ export function useCloudCompanionRoom(actorId: string, name: string, enabled: bo
     setState({ ...initial(), status: 'error' });
   }), [api, actorId, identity]);
   useEffect(() => {
-    if (!enabled || !api.enabled) return;
+    if (!activeEnabled || !api.enabled) return;
     let cancelled = false;
     const before = latest.current;
     void readCloudConversation(actorId).then(saved => {
       if (!cancelled && saved && valid() && latest.current === before) setState({ ...initial(), ...saved, status: 'ready' });
     });
     return () => { cancelled = true; };
-  }, [api, actorId, enabled, identity]);
+  }, [activeEnabled, api, actorId, identity]);
   const reload = useCallback(async () => {
-    if (!enabled || !api.enabled || !actorId) return;
+    if (!activeEnabled || !api.enabled || !actorId) return;
     const run = ++generation.current;
     const previous = latest.current.identity === identity ? latest.current : null;
     try {
@@ -65,13 +67,13 @@ export function useCloudCompanionRoom(actorId: string, name: string, enabled: bo
       setState(old => old.identity === identity && old.status === 'ready' && !chatAccessLost(error)
         ? old : { ...initial(), status: 'error' });
     }
-  }, [actorId, api, enabled, identity, name]);
+  }, [activeEnabled, actorId, api, identity, name]);
   useFocusEffect(useCallback(() => {
-    if (!enabled || !api.enabled) return;
+    if (!activeEnabled || !api.enabled) return;
     void reload();
     const foreground = AppState.addEventListener('change', value => { if (value === 'active') void reload(); });
     return () => { generation.current += 1; foreground.remove(); };
-  }, [api.enabled, enabled, reload]));
+  }, [activeEnabled, api.enabled, reload]));
   const loadOlder = useCallback(async () => {
     const current = latest.current;
     if (current.identity !== identity || !current.roomId || !current.before || olderPending.current) return;

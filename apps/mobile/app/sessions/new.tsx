@@ -2998,6 +2998,7 @@ function NewRemoteSessionContent({ creatingRef }: { creatingRef: { current: bool
 
   const startVoiceRecording = useCallback(async () => {
     const requestedAt = Date.now();
+    if (!shouldShowMobileVoiceUi(Platform.OS)) return;
     if (
       voicePermissionRequestInFlightRef.current
       || voiceStartupInFlightRef.current
@@ -3241,6 +3242,7 @@ function NewRemoteSessionContent({ creatingRef }: { creatingRef: { current: bool
   // Skipped when the tap will stop the current recording rather than start a new one.
   const handleVoiceButtonPressIn = useCallback(() => {
     voiceStartedOnPressInRef.current = false;
+    if (!shouldShowMobileVoiceUi(Platform.OS)) return;
     if (creating || voiceIsProcessing) return;
     if (voiceRecordingActiveRef.current || voiceState === 'listening') return;
     if (!selectedDeviceId || !isMobileRealtimeAudioAvailable()) return;

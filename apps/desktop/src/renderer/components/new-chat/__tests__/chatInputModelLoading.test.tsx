@@ -675,6 +675,18 @@ it.each(['click', 'Tab', 'Enter'] as const)('keeps a recommendation alongside th
   expect(screen.getByRole('button', { name: 'bots.voiceMode.startConversation' })).toBeTruthy();
 });
 
+it('hides composer dictation on Windows while preserving text send', async () => {
+  h.platform = 'win32';
+  const onSend = vi.fn().mockResolvedValue(true);
+  render(<ChatInput {...props} onSend={onSend} />);
+  await waitFor(() => expect(h.editor).not.toBeNull());
+  await act(async () => { h.editor!.commands.setContent('<p>Windows text only</p>'); });
+
+  expect(screen.queryByRole('button', { name: 'newChat.chatInput.voiceInput.start' })).toBeNull();
+  const send = screen.getByRole('button', { name: 'newChat.sendButton.send' });
+  expect(send).toBeTruthy();
+});
+
 it('switches one companion action between call and send, retaining focus and dispatching the draft once', async () => {
   const onSend = vi.fn().mockResolvedValue(true);
   const onStartVoiceConversation = vi.fn();

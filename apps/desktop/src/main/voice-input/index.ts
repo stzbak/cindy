@@ -1,6 +1,7 @@
 import { registerVoiceConversationIpc } from '../voice-conversation/index.js';
 import { hasVoiceConversationLease } from '../voice-conversation/lease.js';
 import { VOICE_CONVERSATION_ACTIVE_MESSAGE } from '../../shared/voiceInputErrors.js';
+import { isCompanionCallsEnabled } from '../../shared/personalProfile.js';
 import { app, ipcMain, shell, systemPreferences, type WebContents } from 'electron';
 import fs from 'node:fs/promises';
 
@@ -1889,37 +1890,39 @@ export function registerVoiceInputIpc(): void {
   registerVoiceInputDataStoreIpc();
   registerVoiceSpeakerFilterIpc();
   let pendingDictationStarts = 0;
-  registerVoiceConversationIpc({
-    getSettings: () => voiceInputDataStore.getSettings(),
-    // Reuse dictation's opt-in setting, local enrollment and strictness. A new
-    // microphone run (including unmute) reads current settings; ASR rotation
-    // keeps the same gate. No separate companion voiceprint or audio storage.
-    createAudioGate: () => getSpeakerFilterService().createGate(voiceInputDataStore.getSettings()),
-    updateSettings: patch => voiceInputDataStore.updateSettings(patch),
-    hasDictation: () => activeByWebContentsId.size > 0 || pendingDictationStarts > 0 || systemAudioMuteGuard.hasPendingOrActiveMute,
-    createProvider: async () => {
-      const owner = activeOwnerScopeKey();
-      const snapshot = getEffectiveAuxiliaryModelChainSnapshot();
-      assertVoiceInputOwnerScopeCurrent(owner, snapshot);
-      const language = resolveAsrLanguageHint(voiceInputDataStore.getSettings().language);
-      const managed = !isVoiceInputByokMode();
-      const chain = (await resolveStartableAsrChain()).filter(
-        (kind) => getVoiceInputAsrProfile(kind).mode !== 'batch-http',
-      );
-      assertVoiceInputOwnerScopeCurrent(owner, snapshot);
-      if (!chain.length || (managed && !isCindyVoiceServiceReady())) throw new Error('ASR unavailable');
-      // A fresh managed connection for each rotation; never cross into BYOK implicitly.
-      const context = managed ? new CindyVoiceRunContext(language, undefined) : undefined;
-      return new FallbackAsrProvider(chain.map((kind) => ({
-        kind,
-        create: () => {
-          assertVoiceInputOwnerScopeCurrent(owner, snapshot);
-          if (!context && isAsrProfileRouteDisabled(getVoiceInputAsrProfile(kind))) throw new Error('ASR disabled');
-          return createVoiceInputProvider(kind, language, context);
-        },
-      })), { hedgeDelayMs: context ? null : undefined, sharedAccountRateLimit: Boolean(context) });
-    },
-  });
+  if (isCompanionCallsEnabled(process.platform)) {
+    registerVoiceConversationIpc({
+      getSettings: () => voiceInputDataStore.getSettings(),
+      // Reuse dictation's opt-in setting, local enrollment and strictness. A new
+      // microphone run (including unmute) reads current settings; ASR rotation
+      // keeps the same gate. No separate companion voiceprint or audio storage.
+      createAudioGate: () => getSpeakerFilterService().createGate(voiceInputDataStore.getSettings()),
+      updateSettings: patch => voiceInputDataStore.updateSettings(patch),
+      hasDictation: () => activeByWebContentsId.size > 0 || pendingDictationStarts > 0 || systemAudioMuteGuard.hasPendingOrActiveMute,
+      createProvider: async () => {
+        const owner = activeOwnerScopeKey();
+        const snapshot = getEffectiveAuxiliaryModelChainSnapshot();
+        assertVoiceInputOwnerScopeCurrent(owner, snapshot);
+        const language = resolveAsrLanguageHint(voiceInputDataStore.getSettings().language);
+        const managed = !isVoiceInputByokMode();
+        const chain = (await resolveStartableAsrChain()).filter(
+          (kind) => getVoiceInputAsrProfile(kind).mode !== 'batch-http',
+        );
+        assertVoiceInputOwnerScopeCurrent(owner, snapshot);
+        if (!chain.length || (managed && !isCindyVoiceServiceReady())) throw new Error('ASR unavailable');
+        // A fresh managed connection for each rotation; never cross into BYOK implicitly.
+        const context = managed ? new CindyVoiceRunContext(language, undefined) : undefined;
+        return new FallbackAsrProvider(chain.map((kind) => ({
+          kind,
+          create: () => {
+            assertVoiceInputOwnerScopeCurrent(owner, snapshot);
+            if (!context && isAsrProfileRouteDisabled(getVoiceInputAsrProfile(kind))) throw new Error('ASR disabled');
+            return createVoiceInputProvider(kind, language, context);
+          },
+        })), { hedgeDelayMs: context ? null : undefined, sharedAccountRateLimit: Boolean(context) });
+      },
+    });
+  }
   if (!appRestoreRegistered) {
     appRestoreRegistered = true;
     app.once('before-quit', () => {

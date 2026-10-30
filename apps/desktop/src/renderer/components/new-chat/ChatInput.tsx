@@ -430,6 +430,7 @@ import { requestRendererMicrophonePermission } from '@/voice-input/startGuards';
 import { COMPOSER_MENTION_MIME, decodeComposerMentionPayload } from '@/lib/composerMentionDrag';
 import { createWorkLouderCodexVoiceGesture } from '@/lib/workLouderCodexVoiceGesture';
 import { appendMentionChip } from './mentionChipInsertion';
+import { isCompanionCallsEnabled, isComposerVoiceInputEnabled } from '../../../shared/personalProfile';
 // device-link 远程会话:设置变更不落本地 DB(会 404),改写远程内存层 + 运行时隧道。
 import { getSessionDeviceId } from '@/features/device-link/remoteProjectsStore';
 import { readSessionProviderGroup } from '@/features/provider-group/sessionProviderGroup';
@@ -3395,7 +3396,14 @@ export function ChatInput({
     };
   }, [editor]);
 
-  const voiceInput = useVoiceInput(editor, disabled, messages, voiceInputOptions);
+  const composerVoiceInputEnabled = isComposerVoiceInputEnabled(window.electronAPI?.platform ?? '');
+  const companionCallsEnabled = isCompanionCallsEnabled(window.electronAPI?.platform ?? '');
+  const voiceInput = useVoiceInput(
+    editor,
+    disabled || !composerVoiceInputEnabled,
+    messages,
+    voiceInputOptions,
+  );
   if (voiceInput.isBusy) {
     if (voiceOwnerStorageKeyRef.current === undefined) {
       voiceOwnerStorageKeyRef.current = storageKeyForDraftRef.current ?? storageKey;
@@ -3430,18 +3438,19 @@ export function ChatInput({
     [voiceInputSettings.shortcut],
   );
   useEffect(() => {
-    if (voiceInputSettings.playInteractionSound) {
+    if (composerVoiceInputEnabled && voiceInputSettings.playInteractionSound) {
       prepareVoiceInputCues();
     }
-  }, [voiceInputSettings.playInteractionSound]);
+  }, [composerVoiceInputEnabled, voiceInputSettings.playInteractionSound]);
   const voiceConversationButtonRef = useRef<HTMLButtonElement>(null);
   const wasVoiceConversationActive = useRef(voiceConversationActive);
   useEffect(() => {
-    if (wasVoiceConversationActive.current && !voiceConversationActive && onStartVoiceConversation)
+    if (companionCallsEnabled && wasVoiceConversationActive.current && !voiceConversationActive && onStartVoiceConversation)
       voiceConversationButtonRef.current?.focus();
     wasVoiceConversationActive.current = voiceConversationActive;
-  }, [voiceConversationActive, onStartVoiceConversation]);
+  }, [companionCallsEnabled, voiceConversationActive, onStartVoiceConversation]);
   const handleVoiceInputStart = useCallback((): boolean => {
+    if (!composerVoiceInputEnabled) return false;
     // 同步 claim 录音后立刻返回是否占用；授权确认（beforeStart）与启动提示音
     // 由 useVoiceInput 的后台启动流程继续处理。
     onComposerTypingRef.current?.();
@@ -3452,7 +3461,12 @@ export function ChatInput({
         if (voiceInputSettings.playInteractionSound) return playVoiceInputStartCue();
       },
     });
-  }, [onBeforeVoiceInputStart, voiceInput.start, voiceInputSettings.playInteractionSound]);
+  }, [
+    composerVoiceInputEnabled,
+    onBeforeVoiceInputStart,
+    voiceInput.start,
+    voiceInputSettings.playInteractionSound,
+  ]);
 
   const playVoiceInputEndCueNow = useCallback(() => {
     if (!voiceInputSettings.playInteractionSound) return;
@@ -3497,8 +3511,8 @@ export function ChatInput({
   const handleVoiceInputStartRef = useRef(handleVoiceInputStart);
   // The voice lifecycle locks surrounding composer mutations while listening,
   // but that must not disable the shortcut that stops the active recording.
-  // Keep this ref on the external composer lock only (disabled / send preflight).
-  const disabledRef = useRef(composerEditorLocked);
+  // Keep this ref on the external composer lock and the personal profile gate.
+  const disabledRef = useRef(composerEditorLocked || !composerVoiceInputEnabled);
   const disableAutofocusRef = useRef(disableAutofocus);
   const focusOnStorageKeyChangeRef = useRef(focusOnStorageKeyChange);
   const latestStorageKeyRef = useRef<string | undefined>(storageKey);
@@ -3535,10 +3549,11 @@ export function ChatInput({
     voiceInputStopRef.current = handleVoiceInputStopWithRefinement;
     voiceInputCancelRef.current = voiceInput.cancel;
     handleVoiceInputStartRef.current = handleVoiceInputStart;
-    disabledRef.current = composerEditorLocked;
+    disabledRef.current = composerEditorLocked || !composerVoiceInputEnabled;
     disableAutofocusRef.current = disableAutofocus;
     focusOnStorageKeyChangeRef.current = focusOnStorageKeyChange;
   }, [
+    composerVoiceInputEnabled,
     composerEditorLocked,
     disableAutofocus,
     focusOnStorageKeyChange,
@@ -9237,7 +9252,8 @@ export function ChatInput({
   // A recommendation is still a suggestion: keep the call available until the
   // user accepts it into the draft. Its Tab/click acceptance and Enter send remain available.
   const mainSlotIsVoice = Boolean(
-    onStartVoiceConversation &&
+    companionCallsEnabled &&
+      onStartVoiceConversation &&
       !queueEditActive &&
       !mainSlotIsStop &&
       !hasComposerPayload &&
@@ -10151,7 +10167,7 @@ export function ChatInput({
                       </button>
                     </Tip>
                   )}
-                  {!queueEditActive && (
+                  {composerVoiceInputEnabled && !queueEditActive && (
                     <VoiceInputButton
                       state={voiceBusyOnCurrentComposer ? voiceInput.state : 'idle'}
                       // The surrounding controls stay locked during voice input, but
@@ -10194,7 +10210,7 @@ export function ChatInput({
                     {mainSlotIsStop ? (
                       <SendButton
                         ref={voiceConversationButtonRef}
-                        companionVoice={Boolean(onStartVoiceConversation)}
+                        companionVoice={Boolean(companionCallsEnabled && onStartVoiceConversation)}
                         disabled={false}
                         onClick={handleStop}
                         isStreaming
@@ -10223,7 +10239,7 @@ export function ChatInput({
                                   ? `${t('newChat.sendButton.send')} · ${composerSendShortcutLabel}`
                                   : selectedSourceDisconnected
                                     ? t('newChat.sourceDisconnected.sendBlocked')
-                                    : onStartVoiceConversation
+                                    : companionCallsEnabled && onStartVoiceConversation
                                       // Keep Tip mounted while the shared action is disabled:
                                       // removing it remounts the button, losing focus and motion.
                                       ? t('newChat.sendButton.send')
@@ -10238,7 +10254,7 @@ export function ChatInput({
                         <span className="inline-flex rounded-full">
                           <SendButton
                             ref={voiceConversationButtonRef}
-                            companionVoice={Boolean(onStartVoiceConversation)}
+                            companionVoice={Boolean(companionCallsEnabled && onStartVoiceConversation)}
                             disabled={
                               mainSlotIsVoice
                                 ? voiceConversationDisabled || composerEditorLocked || !editor || voiceInput.isBusy
@@ -10257,7 +10273,7 @@ export function ChatInput({
                                   : t('newChat.sendButton.send')
                             }
                             onClick={() => {
-                              if (mainSlotIsVoice) onStartVoiceConversation?.();
+                              if (mainSlotIsVoice && companionCallsEnabled) onStartVoiceConversation?.();
                               else void handleClickSend();
                             }}
                           />

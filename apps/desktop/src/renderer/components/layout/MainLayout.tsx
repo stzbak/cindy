@@ -134,6 +134,7 @@ import { readRemoteBots } from '@/features/bots/useRemoteBots';
 import { useSessionEntryLocationCommits } from '@/features/bots/useSessionEntryLocationCommits';
 import { islandEntryRouteState, requestIslandEntryAlertDisposal } from '@/features/bots/islandEntryAlert';
 import { requestProviderShareJoin } from '@/features/provider-share/joinIntent';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 import { ProviderShareGlobalHost } from '@/features/provider-share/ProviderShareGlobalHost';
 import { applyScreenshotComposeRequest } from '@/features/region-screenshot/screenshotTaskHandoff';
 import { remoteProjectsStore } from '@/features/device-link/remoteProjectsStore';
@@ -255,6 +256,7 @@ function SidebarPinSpacer({ width }: { width: number }) {
 }
 
 export function MainLayout() {
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   useRememberMainEntry();
   // 未处理报错的恢复与已处置收敛不依赖当前路由或侧栏是否挂载。
   usePendingAlertAttention();
@@ -618,13 +620,14 @@ export function MainLayout() {
       return () => isDataOwnerGenerationCurrent(owner);
     },
     isRemoteDevice: async (deviceId) => deviceId !== await window.electronAPI.getDeviceId(),
-    readKnownBotRoute: (sessionId) => botRouteForOwnedSession(getBotProfiles(), sessionId)
-      ?? remoteBotRouteForSession(readRemoteBots(), sessionId),
-    resolveBotRoute: (sessionId) => resolveBotRouteForSessionEntry(sessionId, {
+    readKnownBotRoute: (sessionId) => companionsEnabled ? botRouteForOwnedSession(getBotProfiles(), sessionId)
+      ?? remoteBotRouteForSession(readRemoteBots(), sessionId) : null,
+    resolveBotRoute: (sessionId) => companionsEnabled ? resolveBotRouteForSessionEntry(sessionId, {
       readProfiles: getBotProfiles,
       loadProfiles: ensureBotProfilesLoaded,
-    }),
+    }) : Promise.resolve(null),
     openBotRoute: (route, islandEntryId, messageClientId, sessionId) => {
+      if (!companionsEnabled) return;
       if (messageClientId && sessionId) {
         sessionEntryDepsRef.current.navigate(route, { state: {
           ...(islandEntryId ? islandEntryRouteState(islandEntryId) : {}),
@@ -739,6 +742,7 @@ export function MainLayout() {
         | { type: 'settings'; tab: 'voice-input' | 'providers' | 'billing' | 'remote-control'; connect?: string; intent?: 'topup' },
     ) => {
       if (payload.type === 'chat-message') {
+        if (!companionsEnabled) return;
         const search = new URLSearchParams({ messageId: payload.messageId });
         if (payload.threadRootId) search.set('threadRootId', payload.threadRootId);
         if (payload.conversationKind === 'direct') search.set('conversationKind', 'direct');
@@ -746,10 +750,12 @@ export function MainLayout() {
         return;
       }
       if (payload.type === 'chat-invite') {
+        if (!companionsEnabled) return;
         requestChatInvite(payload.token);
         return;
       }
       if (payload.type === 'chat-invite-malformed') {
+        if (!companionsEnabled) return;
         reportMalformedChatInvite();
         return;
       }
@@ -2012,7 +2018,7 @@ export function MainLayout() {
       <FeishuConflictDialogHost />
       {/* 副窗支持管理页手动审批；自动提醒与受邀申请仍只由主窗口处理。 */}
       <ProviderShareGlobalHost manualOnly={isSecondaryWindow()} />
-      {!isSecondaryWindow() && <ChatInviteHost />}
+      {!isSecondaryWindow() && companionsEnabled && <ChatInviteHost />}
       {sharedTaskInvitation && <JoinSharedTaskDialog key={sharedTaskInvitation.id} open initialInvitation={sharedTaskInvitation.link}
         onOpenChange={(open) => { if (!open) setSharedTaskInvitation(null); }} />}
       {/* 窗口级拖拽兜底:拖 .cshare 进窗口空白处 → 会话导入向导 */}

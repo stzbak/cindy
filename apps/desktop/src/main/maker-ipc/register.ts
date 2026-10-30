@@ -10,6 +10,7 @@ import type { WorkerWorktreeRequest } from '../../shared/orca-worker-project';
 import { captureAgentRequest as captureRequest, ownerChannelInputEvidence, type CapturedAgentRequest } from './forwardedRequest.js';
 import { readChannelToolScope } from '../im/shared/channelToolScope.js';
 import { FORWARDED_REQUEST_RECEIPT, verifiedOwnerRequestText, type AgentRequestReceipt } from '../../shared/forwardedRequest.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 import { configureBotTodoDispatch, settleBotTodoForSession } from './botTodoAccess.js';
 import { createBotTodoDispatch } from './botTodoDispatch.js';
 import {
@@ -3126,6 +3127,7 @@ const botRuntimeRestoreCoordinator = createBotRuntimeRestoreCoordinator({
 });
 
 export function restoreBotRuntimeForCurrentOwner(): Promise<boolean> {
+  if (!isCompanionsEnabled(process.platform)) return Promise.resolve(false);
   return botRuntimeRestoreCoordinator.restoreCurrentOwner();
 }
 
@@ -13484,6 +13486,12 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
   });
   setBotRemoteMessageService(botDirectMessageServiceHolder);
   botGroupChatServiceHolder?.dispose();
+  botGroupChatServiceHolder = null;
+  unsubscribeCompanionCloudBroadcast?.();
+  unsubscribeCompanionCloudBroadcast = null;
+  let restartBotCanonicalRuntime: (sessionId: string, assertOwnerCurrent: () => void) => Promise<void> =
+    async () => { throw new Error('COMPANION_RUNTIME_DISABLED'); };
+  if (isCompanionsEnabled(process.platform)) {
   // 分工 steps run in the group's folder, the 项目文件夹, or one worktree per plan (bot-group-chat.md §7.5).
   const botGroupAttachments = createBotGroupAttachmentStore({ ownerRoot: () => ownerScopedUserDataPath(), log });
   const botGroupWorkDir = createBotGroupWorkDir({
@@ -13508,7 +13516,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     trashItem: (fullPath) => shell.trashItem(fullPath),
   });
   // The companion "restart": durable handoff from DB history, no replay of any input.
-  async function restartBotCanonicalRuntime(sessionId: string, assertOwnerCurrent: () => void): Promise<void> {
+  restartBotCanonicalRuntime = async (sessionId, assertOwnerCurrent) => {
     const recovery = contextOverflowRolloverHolder;
     if (!recovery) throwIpcError('PRECONDITION_FAILED', 'Bot recovery is not ready');
     await restartBotRuntime(sessionId, assertOwnerCurrent, {
@@ -13531,7 +13539,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       },
       onClosed: (id) => agentInputCoordinatorHolder?.onSessionClosed(id),
     });
-  }
+  };
   // 「消息平台」页的隐藏任务「重新开始」: 主任务与 IM 专线共用伙伴这一条显式重启。
   configureBotImLaneRuntime({
     isTurnRunning: (sessionId) => !!maker.getSession(sessionId)?.isTurnRunning?.(),
@@ -13695,7 +13703,6 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     log,
   };
   botGroupChatServiceHolder = withChatServer(createBotGroupChatService(botGroupChatDeps), botGroupChatDeps);
-  unsubscribeCompanionCloudBroadcast?.();
   unsubscribeCompanionCloudBroadcast = companionHomes.onChange((snapshot) => {
     const scope = captureDataOwnerBroadcastScope();
     void companionCloudView(snapshot, listCompanionDevices, companionArrivalNotices).then((view) => {
@@ -13704,6 +13711,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       broadcastToAllWindows(MAKER_PUSH.COMPANION_CLOUD_CHANGED, view, scope);
     });
   });
+  }
   // Phones reach groups through the Remote Resource protocol (bot-group-chat.md §8).
   registerBotGroupRemoteResourceProvider(() => botGroupChatServiceHolder);
   botDelegationServiceHolder?.dispose();
@@ -13893,7 +13901,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     },
   });
   const delegationForRestore = botDelegationServiceHolder;
-  void restoreBotRuntimeForCurrentOwner();
+  if (isCompanionsEnabled(process.platform)) void restoreBotRuntimeForCurrentOwner();
 
   ipcMain.handle(
     MAKER_INVOKE.BOT_DELEGATIONS_LIST,

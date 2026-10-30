@@ -214,10 +214,12 @@ export function buildHomeDisplayPullDownActions(input: {
   /** 项目筛选的候选:完整项目集,不受最近活跃等筛选收窄。 */
   projects: readonly HomeDisplayMenuProject[];
   teammates?: readonly { key: string; title: string; subtitle?: string }[];
+  companionsEnabled?: boolean;
   dialogueCount: number;
   t: Translate;
 }): NativePullDownAction[] {
   const { state, t } = input;
+  const companionsEnabled = input.companionsEnabled !== false;
   const groupSummary = [
     state.groupByProject ? t(`${MENU}.groupProject`) : null,
     state.groupDialogue ? t(`${MENU}.groupDialogue`) : null,
@@ -283,7 +285,7 @@ export function buildHomeDisplayPullDownActions(input: {
         ]),
         section("filter.projects.list", projectRows),
       ]),
-      submenu("filter.teammates", t(`${MENU}.filterTeammatesHeading`),
+      ...(companionsEnabled ? [submenu("filter.teammates", t(`${MENU}.filterTeammatesHeading`),
         !state.teammateFilter || state.teammateFilter === "all" ? t(`${MENU}.filterAnySource`)
           : state.teammateFilter === "none" ? t(`${MENU}.filterHideAllTeammates`)
           : t(`${MENU}.filterSelectedTeammates`, { count: state.teammateFilter.length }), "person.2", [
@@ -294,7 +296,7 @@ export function buildHomeDisplayPullDownActions(input: {
             Array.isArray(state.teammateFilter) && state.teammateFilter.includes(teammate.key), true),
           ...(teammate.subtitle ? { subtitle: teammate.subtitle } : {}),
         })),
-      ]),
+      ])] : []),
       submenu("filter.vendor", t(`${MENU}.filterVendorHeading`), t(`${MENU}.filterVendor.${state.vendorFilter}`), "cpu",
         HOME_VENDOR_FILTERS.map((vendor) =>
           checkable(`filter.vendor.${vendor}`, t(`${MENU}.filterVendor.${vendor}`), state.vendorFilter === vendor))),
@@ -333,9 +335,9 @@ export function buildHomeDisplayPullDownActions(input: {
       submenu("taskInfo", t(`${MENU}.taskInfoHeading`), homeTaskInfoSummary(state.taskInfoFields, t), "info.circle",
         HOME_TASK_INFO_FIELDS.map((field) =>
           checkable(`taskInfo.${field}`, t(`${MENU}.taskInfo.${field}`), state.taskInfoFields.includes(field), true))),
-      submenu("teammates", t("devices.companions.title"), "", "person.2", [
+      ...(companionsEnabled ? [submenu("teammates", t("devices.companions.title"), "", "person.2", [
         checkable("teammates.showCollapsedAvatars", t(`${MENU}.showCollapsedTeammateAvatars`), state.showCollapsedTeammateAvatars !== false),
-      ]),
+      ])] : []),
     ]),
   ];
 }

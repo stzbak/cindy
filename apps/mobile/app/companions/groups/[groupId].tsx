@@ -1,4 +1,6 @@
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
+import { Platform } from 'react-native';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { useAuth } from '@/auth/AuthContext';
 import { BotGroupChatScreen } from '@/session/BotGroupChatScreen';
 
@@ -12,6 +14,10 @@ function firstParam(value: string | string[] | undefined): string {
  * which carries no computer name; the screen then shows the id until the group loads.
  */
 export default function BotGroupChatRoute() {
+  return isCompanionsEnabled(Platform.OS) ? <BotGroupChatRouteContent /> : <Redirect href="/devices" />;
+}
+
+function BotGroupChatRouteContent() {
   const params = useLocalSearchParams<{ groupId?: string | string[]; deviceId?: string | string[]; deviceName?: string | string[]; messageId?: string | string[]; threadRootId?: string | string[]; notificationResponse?: string | string[] }>();
   const { accountGeneration } = useAuth();
   const groupId = firstParam(params.groupId);

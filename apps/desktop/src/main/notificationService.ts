@@ -39,6 +39,7 @@ import { captureDataOwnerBroadcastScope, isDataOwnerBroadcastScopeCurrent } from
 import { drainPersistQueue } from './messagePersistBroadcaster';
 import { getInputHandoffNoticeOwnership } from './im/shared/inputHandoffChannelNotice';
 import { createLogger } from './logger';
+import { isCompanionsEnabled } from '../shared/personalProfile.js';
 import {
   getNotificationImageLabel,
   getSessionExternalNotificationText,
@@ -60,6 +61,7 @@ export function getDesktopNotificationsEnabled(): boolean {
 
 /** Chat uses the same system permission and global desktop preference as task notifications. */
 export async function showDesktopChatMessage(payload: ChatMessageNotification, current: () => boolean): Promise<void> {
+  if (!isCompanionsEnabled(process.platform)) return;
   const visible = () => {
     // A group URL cannot tell which side-panel thread is being read. Thread
     // notifications rely on the consumer's authoritative read-receipt check.
@@ -346,6 +348,7 @@ export function initNotificationService(deps: NotificationServiceDeps): void {
           }
         }
         if (!isDataOwnerBroadcastScopeCurrent(ownerScope)) return;
+        if (!isCompanionsEnabled(process.platform) && (preview?.teammateBotId || teammateBotId)) return;
         // Preview enrichment can outlive an entire later turn. Never send that
         // later reply under the terminal signal captured for this IPC event.
         const currentSignal = kind === 'done' ? getSessionNotificationTurnSignal(sessionId) : undefined;

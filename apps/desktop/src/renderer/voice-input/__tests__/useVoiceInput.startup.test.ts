@@ -114,7 +114,7 @@ function chunk(index: number, amplitude = 512): PcmChunk {
 // useVoiceInput.start() 同步 claim 录音后立刻返回是否占用;启动流程(采集、授权
 // 确认、连接)在后台继续,测试里捕获的 starting 是 claim 结果,启动收尾由 act
 // 的刷新覆盖。
-function mount() {
+function mount(disabled = false) {
   const connection = deferred<{ ok: true; runId: string }>();
   const mute = deferred<{ ok: true }>();
   const permissionRequired = vi.fn();
@@ -149,7 +149,7 @@ function mount() {
     off: vi.fn(),
   } as unknown as Editor;
   const hook = renderHook(() =>
-    useVoiceInput(editor, false, undefined, { onMicrophonePermissionRequired: permissionRequired }),
+    useVoiceInput(editor, disabled, undefined, { onMicrophonePermissionRequired: permissionRequired }),
   );
   return { ...hook, api, connection, mute, permissionRequired };
 }
@@ -170,6 +170,15 @@ afterEach(() => {
 });
 
 describe('local voice capture independent of startup checks and cloud', () => {
+  it('does not prewarm or start when the personal profile disables composer voice', () => {
+    const h = mount(true);
+    expect(h.api.prewarm).not.toHaveBeenCalled();
+    expect(mocks.prepareMicrophone).not.toHaveBeenCalled();
+    expect(h.result.current.start()).toBe(false);
+    expect(h.api.start).not.toHaveBeenCalled();
+    expect(mocks.engines).toHaveLength(0);
+  });
+
   it('keeps an authorized microphone closed through a short composer click', async () => {
     const h = mount();
     h.api.getMicrophonePermissionCached.mockReturnValue({ ok: true, status: 'granted' });

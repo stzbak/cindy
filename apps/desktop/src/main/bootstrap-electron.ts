@@ -93,6 +93,7 @@ import {
   WINDOW_BACKDROP_MATERIAL_CHANGED_CHANNEL,
 } from '../shared/windowBackdrop.js';
 import { isAllowedBillingMailtoRequest } from '../shared/billing.js';
+import { isCompanionsEnabled } from '../shared/personalProfile.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { textFilePreviewResult, TEXT_PREVIEW_LIMIT_MB } from './text-file-preview';
@@ -1246,8 +1247,14 @@ async function waitForCurrentAccountProviderModelsReady(): Promise<void> {
 }
 
 // Live getters preserve account/scheduler replacement without loading Main modules at dispatch time.
+const companionFeaturesEnabled = isCompanionsEnabled(process.platform);
 configureRoutineHost({
-  assertImportedAutomationReady: ensureImportedAutomationReady, prepareImportedAutomation, finishImportedAutomation, recoverImports: recoverCompanionImports,
+  ...(companionFeaturesEnabled ? {
+    assertImportedAutomationReady: ensureImportedAutomationReady,
+    prepareImportedAutomation,
+    finishImportedAutomation,
+    recoverImports: recoverCompanionImports,
+  } : {}),
   getBot: getBotRemoteResourceSource,
   ensureRoutineSession: ensureBotRoutineLaneSession,
   closeRoutineSession: async (sessionId) => {
@@ -1257,8 +1264,10 @@ configureRoutineHost({
   getScheduleStorage,
 });
 // 伙伴自主跟进：跟随例行任务引擎生命周期（引擎每次创建后重新登记 host:sessions 事件源）。
-configureBotAutonomyHost({ getMainWindow: () => mainWindowRef });
-initBotAutonomy();
+if (companionFeaturesEnabled) {
+  configureBotAutonomyHost({ getMainWindow: () => mainWindowRef });
+  initBotAutonomy();
+}
 
 /**
  * Phase 4: 不再用 `_schedulerStarted` flag —— `startScheduler()` 内部以 `_scheduler`
@@ -9509,7 +9518,7 @@ app.on('ready', async () => {
       // Bot recovery is owner-scoped and must start only after DbClient
       // takeover. registerMakerIpc also invokes this once its services exist,
       // covering both possible splash/login orderings without duplicate runs.
-      void restoreBotRuntimeForCurrentOwner();
+      if (companionFeaturesEnabled) void restoreBotRuntimeForCurrentOwner();
       void restoreOrcaRemoteWorkersForCurrentOwner();
       startReadyWorktreeMaintenance();
       // An Agent-approved update restarted the app: write its outcome back to the task.

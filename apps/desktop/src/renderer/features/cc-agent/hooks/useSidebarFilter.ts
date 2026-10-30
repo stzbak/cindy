@@ -128,6 +128,7 @@ export interface UseSidebarFilterReturn {
   status: FilterStatus;
   creators: FilterCreators;
   creatorOptions: readonly TaskBotIdentity[];
+  creatorsEnabled: boolean;
   toggleCreator: (key: string) => void;
   setCreatorsAll: () => void;
   setCreatorsNone: () => void;
@@ -227,6 +228,7 @@ export function useSidebarFilter(
   hiddenProjectKeys: ReadonlySet<string>,
   initialSnapshot: SidebarSettingsSnapshot,
   creatorOptions: readonly TaskBotIdentity[] = [],
+  creatorsEnabled = true,
 ): UseSidebarFilterReturn {
   const ownerId = initialSnapshot.dataOwnerId;
   const ownerStamp = useMemo<DataOwnerPushStamp>(
@@ -242,23 +244,26 @@ export function useSidebarFilter(
   const [storedCreators, setCreators] = useState<FilterCreators>(() => loadCreators(ownerId));
   const normalizeCreators = useCallback((selected: FilterCreators): FilterCreators =>
     normalizeTaskCreators(selected, creatorOptions), [creatorOptions]);
-  const creators = useMemo(() => normalizeCreators(storedCreators), [normalizeCreators, storedCreators]);
+  const creators = useMemo(() => creatorsEnabled ? normalizeCreators(storedCreators) : 'all',
+    [creatorsEnabled, normalizeCreators, storedCreators]);
   useEffect(() => {
     if (creators === storedCreators) return;
     setCreators(creators);
     persistCreators(creators, ownerId);
   }, [creators, storedCreators, ownerId]);
   const toggleCreator = useCallback((key: string) => {
+    if (!creatorsEnabled) return;
     setCreators(previous => {
       const next = nextCreatorsAfterToggle(normalizeCreators(previous), key);
       persistCreators(next, ownerId);
       return next;
     });
-  }, [ownerId, normalizeCreators]);
+  }, [creatorsEnabled, ownerId, normalizeCreators]);
   const setCreatorsNone = useCallback(() => {
+    if (!creatorsEnabled) return;
     setCreators('none');
     persistCreators('none', ownerId);
-  }, [ownerId]);
+  }, [creatorsEnabled, ownerId]);
   const setCreatorsAll = useCallback(() => {
     setCreators('all');
     persistCreators('all', ownerId);
@@ -648,6 +653,7 @@ export function useSidebarFilter(
   return {
     creators,
     creatorOptions,
+    creatorsEnabled,
     toggleCreator,
     setCreatorsAll,
     setCreatorsNone,

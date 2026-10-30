@@ -118,6 +118,7 @@ import { getDesktopContactsManager } from '../maker-host/maker-contacts-host.js'
 import { broadcastContactsChanged } from '../maker-host/contacts-change-broadcast.js';
 import { readContactsSettings } from '../maker-host/contacts-settings-store.js';
 import { readSystemContacts, writeSystemContacts } from '../maker-host/system-contacts.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 import { BUILTIN_LIZI_MCP_IDS, pluginIdForProviderName } from '../maker-host/plugins/builtin-plugins.js';
 import { isFrozenBuiltinPluginAllowed } from './codexBuiltinToolPolicy.js';
 import { GLOBAL_PLUGIN_IDS } from '../maker-host/plugins/types.js';
@@ -756,6 +757,7 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
     // 启动早期跑, 那时 registerMakerIpc 还没执行, holder 是 null; 回调真正被调时
     // (LLM 调工具时) registerMakerIpc 早已执行完毕, holder 已 ready。
     xdtHelper: {
+      enableCompanionTools: isCompanionsEnabled(process.platform),
       runtimeCapabilities: deps.runtimeCapabilities,
       productHelpDocs: HELP_KNOWLEDGE,
       // Install / auto-update requests become owner-only Host cards (see agent-app-update/).
