@@ -50,6 +50,26 @@ test('allows the Personal gate layer and its documentation', () => {
   }
 });
 
+test('allows only the reviewed Personal mobile updater delta', () => {
+  const repo = initializeRepository();
+  try {
+    const base = git(['rev-parse', 'HEAD'], repo);
+    write(repo, 'apps/mobile/src/update/fetchPersonalLatestRelease.ts', 'export const feed = true;\n');
+    git(['commit', '-m', 'personal updater'], repo);
+    const allowed = run(process.execPath, [SCRIPT, '--base', base], repo);
+    assert.equal(allowed.status, 0, allowed.stderr || allowed.stdout);
+
+    const nextBase = git(['rev-parse', 'HEAD'], repo);
+    write(repo, 'apps/mobile/src/update/unreviewedUpdater.ts', 'export const unsafe = true;\n');
+    git(['commit', '-m', 'unreviewed updater'], repo);
+    const rejected = run(process.execPath, [SCRIPT, '--base', nextBase], repo);
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /unreviewedUpdater\.ts/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test('rejects protected persistence, signing, endpoint, and dependency changes', () => {
   const repo = initializeRepository();
   try {

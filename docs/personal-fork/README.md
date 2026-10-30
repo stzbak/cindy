@@ -47,15 +47,17 @@ Local commands:
 
 The workflow uses these repository secrets:
 
-- `PERSONAL_MOBILE_CONFIG_JSON`: the full JSON content of `apps/mobile/scripts/self-host-regions.json`, including the CN package identity, TapDB values, and Android signing alias.
+- `PERSONAL_MOBILE_CONFIG_JSON`: the full JSON content of `apps/mobile/scripts/self-host-regions.json`, including the CN package identity, TapDB values, and Android signing alias. The workflows override the Android package to `com.stzbak.cindy`.
 - `PERSONAL_ANDROID_KEYSTORE_BASE64`: the Android signing keystore encoded as base64.
 - `XDT_ANDROID_KEYSTORE_PASSWORD_CN`: the Android keystore password.
 - `XDT_ANDROID_KEY_PASSWORD_CN`: the Android key password.
 - `CINDY_WIN_SIGN_CMD` (optional): the external Windows signing command. Without it, the workflow still compiles an unsigned installer for validation.
 
-The Android package id and signing key, and the Windows publisher identity, must remain compatible with existing Personal installations. Changing either identity creates a different app and prevents normal updates.
+The Personal Android package is `com.stzbak.cindy`, so it can coexist with the official `com.xd.cindycn` app. Keep that package id and the Personal signing key stable: changing either creates a different app and prevents normal in-place updates. Personal Android disables the official TapDB SDK because the official TapDB credentials are bound to the official package/signature.
 
-The workflow currently builds validation artifacts. Publishing them to a Personal update feed remains a separate, explicit release action so an upstream sync cannot silently replace the running client.
+The daily workflow still produces validation artifacts and a draft upstream-sync PR. After a reviewed merge into `personal`, `.github/workflows/personal-android-release.yml` builds a signed APK and publishes a normal GitHub Release. Personal Android reads the latest release from `stzbak/cindy`, downloads its own signed APK, and never consumes the official APK feed.
+
+The app's Personal update check uses the release metadata asset and the native Android versionCode. The release workflow assigns `1.0.<run_number>` and a monotonically increasing versionCode, then extracts the embedded runtimeVersion from the built APK. Official JS OTA checks remain disabled on Personal Android; updates are delivered as full signed APKs.
 
 ## Patch maintenance rules
 
@@ -72,7 +74,7 @@ When upstream moves a call site, resolve the conflict by restoring the upstream 
 
 ## Protected-path guard
 
-The automation compares the candidate with the fetched official commit before running the platform tests. `scripts/personal/check-patch-boundary.mjs` rejects Personal changes to dependency lockfiles, database migrations and local database code, updater implementations, packaging and signing configuration, service endpoint files, generated native projects, release tooling, credentials, and shared packages other than the existing `packages/lizi-mcps` compatibility gate.
+The automation compares the candidate with the fetched official commit before running the platform tests. `scripts/personal/check-patch-boundary.mjs` rejects Personal changes to dependency lockfiles, database migrations and local database code, general updater implementations, packaging and signing configuration, service endpoint files, generated native projects, release tooling, credentials, and shared packages other than the existing `packages/lizi-mcps` compatibility gate. The mobile updater allowlist is deliberately limited to the reviewed Personal GitHub-Release feed and build-number comparison files.
 
 The guard is intentionally strict. If a future change genuinely needs to cross one of these boundaries, update the guard and its tests in the same reviewed commit instead of bypassing the failure.
 

@@ -19,6 +19,7 @@ env:
   ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
   ELECTRON_OVERRIDE_DIST_PATH: '${{ github.workspace }}/.electron-stub-dist'
   NODE_OPTIONS: '--max-old-space-size=8192'
+  PERSONAL_ANDROID_PACKAGE: 'com.stzbak.cindy'
 
 jobs:
   sync:
@@ -222,6 +223,7 @@ jobs:
           if (!encodedKeystore) throw new Error('Missing repository secret PERSONAL_ANDROID_KEYSTORE_BASE64');
           const config = JSON.parse(raw);
           if (!config.cn || !config.cn.androidSigning) throw new Error('Android CN signing config is incomplete');
+          config.cn.androidPackage = process.env.PERSONAL_ANDROID_PACKAGE;
           const keystorePath = path.join(process.env.RUNNER_TEMP, 'personal-android.keystore');
           config.cn.androidSigning.keystorePath = keystorePath;
           fs.writeFileSync('apps/mobile/scripts/self-host-regions.json', JSON.stringify(config, null, 2) + '\n');

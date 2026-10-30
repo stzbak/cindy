@@ -41,6 +41,11 @@ export interface EvaluateBundleUpdateInput {
   currentRuntimeVersion: string | null | undefined;
   /** 当前包的应用版本(原生真值 APP_BINARY_VERSION;不要传会被 OTA 覆盖的 expoConfig.version)。 */
   currentVersion: string | null | undefined;
+  /**
+   * 当前原生 buildNumber。仅 Personal Android 的独立整包通道传入；传入后
+   * buildNumber 必须严格递增，即使 runtimeVersion 未变化也提示安装新 APK。
+   */
+  currentBuildNumber?: string | number | null;
   /** `/latest` 返回体(已解析)。无效/缺字段视为无更新。 */
   latest: unknown;
 }
@@ -99,6 +104,13 @@ export function parseLatestRelease(value: unknown): LatestReleaseRecord | null {
 }
 
 /** 比较已校验的点分纯数字版本:a<b → -1,a==b → 0,a>b → 1,缺失段按 0 处理。 */
+function positiveBuildNumber(value: unknown): number | null {
+  const text = String(value ?? '').trim();
+  if (!/^[1-9]\d*$/.test(text)) return null;
+  const number = Number(text);
+  return Number.isSafeInteger(number) ? number : null;
+}
+
 export function compareVersions(a: string, b: string): number {
   const pa = String(a).split('.').map((x) => Number(x));
   const pb = String(b).split('.').map((x) => Number(x));
@@ -124,17 +136,26 @@ export function compareVersions(a: string, b: string): number {
 export function evaluateBundleUpdate({
   currentRuntimeVersion,
   currentVersion,
+  currentBuildNumber,
   latest,
 }: EvaluateBundleUpdateInput): BundleUpdateEvaluation {
   const record = parseLatestRelease(latest);
   if (!record) return NO_UPDATE;
 
-  const current = String(currentRuntimeVersion ?? '').trim();
-  if (!current) return NO_UPDATE;
-
   const currentAppVersion = String(currentVersion ?? '').trim();
   if (!isSupportedBundleVersion(currentAppVersion)) return NO_UPDATE;
   if (compareVersions(record.version, currentAppVersion) <= 0) return NO_UPDATE;
+
+  const usesBuildNumber = currentBuildNumber !== undefined && currentBuildNumber !== null;
+  const currentBuild = usesBuildNumber ? positiveBuildNumber(currentBuildNumber) : null;
+  const latestBuild = usesBuildNumber ? positiveBuildNumber(record.buildNumber) : null;
+  if (usesBuildNumber && (!currentBuild || !latestBuild || latestBuild <= currentBuild)) {
+    return NO_UPDATE;
+  }
+  const buildNumberAdvanced = usesBuildNumber && latestBuild !== null && currentBuild !== null;
+
+  const current = String(currentRuntimeVersion ?? '').trim();
+  if (!current && !buildNumberAdvanced) return NO_UPDATE;
 
   // 强更要求这条记录本身**能被满足**:
   // - minVersion ≤ version:否则唯一提供的安装目标仍低于门槛,用户装完照旧被强更,
@@ -147,7 +168,7 @@ export function evaluateBundleUpdate({
     compareVersions(record.version, record.minVersion) >= 0,
   );
 
-  if (!forced && record.runtimeVersion === current) return NO_UPDATE;
+  if (!forced && record.runtimeVersion === current && !buildNumberAdvanced) return NO_UPDATE;
 
   return {
     needsUpdate: true,

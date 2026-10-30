@@ -19,6 +19,22 @@ function git(args) {
   return result.stdout.trim();
 }
 
+// Personal Android has one intentionally narrow updater delta: it reads the fork's
+// signed GitHub Release feed and compares its native build number. Keep the allowlist
+// exact so unrelated updater implementation changes still fail the boundary check.
+const allowedMobileUpdaterFiles = new Set([
+  'apps/mobile/src/update/bundleUpdate.ts',
+  'apps/mobile/src/update/bundleUpdate.test.ts',
+  'apps/mobile/src/update/fetchLatestRelease.ts',
+  'apps/mobile/src/update/fetchLatestRelease.test.ts',
+  'apps/mobile/src/update/fetchPersonalLatestRelease.ts',
+  'apps/mobile/src/update/fetchPersonalLatestRelease.test.ts',
+  'apps/mobile/src/update/resumeUpdateCheck.ts',
+  'apps/mobile/src/update/useBundleUpdatePrompt.ts',
+  'apps/mobile/src/update/useResumeUpdateCheck.ts',
+  'apps/mobile/src/update/useStartupOtaGate.ts',
+]);
+
 const protectedPaths = [
   { pattern: /^pnpm-lock\.yaml$/, reason: 'dependency lockfile' },
   { pattern: /^\.github\/workflows\/ci\.yml$/, reason: 'upstream CI workflow' },
@@ -49,6 +65,7 @@ const files = git(['diff', '--name-only', base + '...HEAD'])
   .filter(Boolean);
 const violations = [];
 for (const file of files) {
+  if (allowedMobileUpdaterFiles.has(file)) continue;
   for (const entry of protectedPaths) {
     if (entry.pattern.test(file)) violations.push({ file, reason: entry.reason });
   }

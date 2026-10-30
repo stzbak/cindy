@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { isCompanionsEnabled, isComposerVoiceInputEnabled } from "@/config/personalProfile";
+import {
+  isCompanionsEnabled,
+  isComposerVoiceInputEnabled,
+  isMobileTapdbEnabled,
+  isPersonalAndroidUpdateFeedEnabled,
+} from "@/config/personalProfile";
 
 describe("mobile personal profile voice gate", () => {
   it("disables composer voice input only on Android", () => {
@@ -13,5 +18,15 @@ describe("mobile personal profile voice gate", () => {
     expect(isCompanionsEnabled("android")).toBe(false);
     expect(isCompanionsEnabled("ios")).toBe(true);
     expect(isCompanionsEnabled("web")).toBe(true);
+  });
+
+  it("disables official TapDB only on Android", () => {
+    expect(isMobileTapdbEnabled("android")).toBe(false);
+    expect(isMobileTapdbEnabled("ios")).toBe(true);
+  });
+
+  it("uses the Personal GitHub release feed only on Android", () => {
+    expect(isPersonalAndroidUpdateFeedEnabled("android")).toBe(true);
+    expect(isPersonalAndroidUpdateFeedEnabled("ios")).toBe(false);
   });
 });

@@ -10,6 +10,7 @@ import { Alert, Linking, Platform } from 'react-native';
 import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
 import { i18n } from '@/i18n';
+import { isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
 import {
   APP_BINARY_VERSION,
   IS_OTA_SELFHOST,
@@ -136,6 +137,7 @@ export function useBundleUpdatePrompt({
   channel = resolveUpdateChannelForDevice(),
 }: Options = {}) {
   const [state, setState] = useState<CheckState>('idle');
+  const personalAndroidUpdates = isPersonalAndroidUpdateFeedEnabled(Platform.OS);
   const bundleCheckEnabled = shouldCheckBundleUpdate({
     isSelfHosted: IS_OTA_SELFHOST,
     isReviewMode: REVIEW_MODE,
@@ -174,6 +176,9 @@ export function useBundleUpdatePrompt({
         // 强更门槛(minVersion)按原生真值比,避免热更后 expoConfig.version 被内嵌旧值
         // 覆盖导致原生已达标的机器被误判为低于门槛、错误触发强更。
         currentVersion: APP_BINARY_VERSION || null,
+        currentBuildNumber: personalAndroidUpdates
+          ? Application.nativeBuildVersion
+          : undefined,
         latest,
       });
       if (evaluation.needsUpdate) {
@@ -195,7 +200,7 @@ export function useBundleUpdatePrompt({
     } finally {
       inFlightChannels.current.delete(channel);
     }
-  }, [auto, bundleCheckEnabled, channel, notifyWhenUpToDate]);
+  }, [auto, bundleCheckEnabled, channel, notifyWhenUpToDate, personalAndroidUpdates]);
 
   useEffect(() => {
     if (!auto || !bundleCheckEnabled) return;

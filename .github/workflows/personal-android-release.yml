@@ -1,0 +1,152 @@
+name: personal-android-release
+
+on:
+  push:
+    branches:
+      - personal
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'config/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: personal-android-release
+  cancel-in-progress: false
+
+env:
+  XDT_SKIP_AGENT_BIN_INSTALL: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  NODE_OPTIONS: '--max-old-space-size=8192'
+  PERSONAL_ANDROID_PACKAGE: 'com.stzbak.cindy'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout Personal branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: personal
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Personal release identity
+        run: |
+          version="1.0.$GITHUB_RUN_NUMBER"
+          version_code=$((100000 + GITHUB_RUN_NUMBER))
+          printf 'PERSONAL_APP_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+          printf 'PERSONAL_ANDROID_VERSION_CODE=%s\n' "$version_code" >> "$GITHUB_ENV"
+          node - "$version" <<'NODE'
+          const fs = require('fs');
+          const path = 'apps/mobile/app.json';
+          const app = JSON.parse(fs.readFileSync(path, 'utf8'));
+          app.expo.version = process.argv[2];
+          fs.writeFileSync(path, JSON.stringify(app, null, 2) + '\n');
+          NODE
+
+      - name: Materialize Android signing files
+        env:
+          PERSONAL_MOBILE_CONFIG_JSON: ${{ secrets.PERSONAL_MOBILE_CONFIG_JSON }}
+          PERSONAL_ANDROID_KEYSTORE_BASE64: ${{ secrets.PERSONAL_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const raw = process.env.PERSONAL_MOBILE_CONFIG_JSON;
+          const encodedKeystore = process.env.PERSONAL_ANDROID_KEYSTORE_BASE64;
+          if (!raw) throw new Error('Missing repository secret PERSONAL_MOBILE_CONFIG_JSON');
+          if (!encodedKeystore) throw new Error('Missing repository secret PERSONAL_ANDROID_KEYSTORE_BASE64');
+          const config = JSON.parse(raw);
+          if (!config.cn || !config.cn.androidSigning) throw new Error('Android CN signing config is incomplete');
+          config.cn.androidPackage = process.env.PERSONAL_ANDROID_PACKAGE;
+          const keystorePath = path.join(process.env.RUNNER_TEMP, 'personal-android.keystore');
+          config.cn.androidSigning.keystorePath = keystorePath;
+          fs.writeFileSync('apps/mobile/scripts/self-host-regions.json', JSON.stringify(config, null, 2) + '\n');
+          fs.writeFileSync(keystorePath, Buffer.from(encodedKeystore, 'base64'), { mode: 0o600 });
+          NODE
+
+      - name: Build signed Personal APK
+        env:
+          XDT_ANDROID_KEYSTORE_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEYSTORE_PASSWORD_CN }}
+          XDT_ANDROID_KEY_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEY_PASSWORD_CN }}
+        run: |
+          pnpm mobile:build:android -- --region cn --execute --skip-git-gate --artifacts apk --version-code "$PERSONAL_ANDROID_VERSION_CODE" --out "$RUNNER_TEMP/android-artifacts"
+
+      - name: Prepare release assets
+        run: |
+          cp "$RUNNER_TEMP/android-artifacts/app-release.apk" "$RUNNER_TEMP/android-artifacts/cindy-personal-android.apk"
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { readEmbeddedRuntimeVersionFromApk } from './apps/mobile/scripts/lib/embedded-runtime.mjs';
+
+          const apk = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.apk');
+          const metadataPath = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.json');
+          const metadata = {
+            version: process.env.PERSONAL_APP_VERSION,
+            buildNumber: Number(process.env.PERSONAL_ANDROID_VERSION_CODE),
+            runtimeVersion: readEmbeddedRuntimeVersionFromApk(apk),
+            releaseNotes: 'Personal Android build ' + process.env.GITHUB_SHA.slice(0, 12),
+          };
+          fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
+          NODE
+          sha256sum "$RUNNER_TEMP/android-artifacts/cindy-personal-android.apk" "$RUNNER_TEMP/android-artifacts/cindy-personal-android.json" > "$RUNNER_TEMP/android-artifacts/SHA256SUMS"
+
+      - name: Publish Personal GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="personal-v$PERSONAL_APP_VERSION"
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<EOF
+          Personal Android release $PERSONAL_APP_VERSION.
+
+          - Package: $PERSONAL_ANDROID_PACKAGE
+          - versionCode: $PERSONAL_ANDROID_VERSION_CODE
+          - Commit: $GITHUB_SHA
+          - This APK is signed by the Personal keystore and updates only the Personal app.
+          EOF
+          apk="$RUNNER_TEMP/android-artifacts/cindy-personal-android.apk"
+          metadata="$RUNNER_TEMP/android-artifacts/cindy-personal-android.json"
+          checksums="$RUNNER_TEMP/android-artifacts/SHA256SUMS"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" "$metadata" "$checksums" --clobber
+            gh release edit "$tag" --title "Cindy Personal Android $PERSONAL_APP_VERSION" --notes-file "$notes"
+          else
+            gh release create "$tag" "$apk" "$metadata" "$checksums" --title "Cindy Personal Android $PERSONAL_APP_VERSION" --notes-file "$notes"
+          fi
+
+      - name: Summarize release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="personal-v$PERSONAL_APP_VERSION"
+          gh release view "$tag" --json url,assets --jq '"Release: \(.url)\nAssets: \([.assets[].name] | join(", "))"' >> "$GITHUB_STEP_SUMMARY"

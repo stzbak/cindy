@@ -133,6 +133,28 @@ describe('evaluateBundleUpdate', () => {
     expect(r.target).toBeNull();
   });
 
+  it('Personal buildNumber 递增时，即使 runtimeVersion 相同也提示新 APK', () => {
+    const r = evaluateBundleUpdate({
+      currentRuntimeVersion: 'rtv-same',
+      currentVersion: '1.1.0',
+      currentBuildNumber: '101',
+      latest: { ...VALID, buildNumber: '102', runtimeVersion: 'rtv-same' },
+    });
+    expect(r.needsUpdate).toBe(true);
+    expect(r.forced).toBe(false);
+    expect(r.target?.version).toBe('1.2.0');
+  });
+
+  it('Personal buildNumber 未递增时抑制重复更新提示', () => {
+    const r = evaluateBundleUpdate({
+      currentRuntimeVersion: 'rtv-same',
+      currentVersion: '1.1.0',
+      currentBuildNumber: '102',
+      latest: { ...VALID, buildNumber: '102', runtimeVersion: 'rtv-same' },
+    });
+    expect(r).toEqual({ needsUpdate: false, forced: false, target: null });
+  });
+
   it('runtimeVersion 不同 → 需要整包更新', () => {
     const r = evaluateBundleUpdate({ currentRuntimeVersion: 'rtv-old', currentVersion: '1.1.0', latest: VALID });
     expect(r.needsUpdate).toBe(true);
