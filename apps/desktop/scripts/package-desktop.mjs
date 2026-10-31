@@ -195,8 +195,9 @@ function runForgeMake({ platform, arch, region, version, versionless, noSign, we
     // 「必须被强制要求做出选择」那条约束从 typecheck 搬过来的落点,不要改成静默跳过。
     // 版本无关 / 开源打包(versionless):配置文件是 gitignore 的、默认 checkout 里不存在,
     // 允许缺失 ⇒ 注入空目标、功能整体关闭,拉仓即可打包(2026-08-04 review P1)。
+    // Personal Windows 发行同样没有官方私有上报配置;显式个人构建允许缺省。
     // 注意 allowMissing 只放宽「文件缺失」;文件在但内容损坏两种模式都仍然硬失败。
-    ...desktopLogUploadBuildEnv({ authRegion: region, allowMissing: versionless }),
+    ...desktopLogUploadBuildEnv({ authRegion: region, allowMissing: versionless || (platform === 'win32' && process.env.CINDY_PERSONAL_BUILD === '1') }),
     // forge.config.ts 的 NSIS appId / AUMID 优先读这个(与 VITE_ 同源,双保险)。
     CINDY_AUTH_REGION: region,
     // forge.config.ts 注入 packagerConfig.appVersion;版本无关时为占位 0.0.0。

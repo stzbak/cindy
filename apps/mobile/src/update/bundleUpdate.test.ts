@@ -283,6 +283,18 @@ describe('evaluateBundleUpdate', () => {
 });
 
 describe('preferredInstallUrl', () => {
+  it('Personal Android follows increasing native builds across the official-version transition and rebuilds', () => {
+    for (const currentVersion of ['1.0.2', '0.1.32']) {
+      expect(evaluateBundleUpdate({
+        currentVersion, currentBuildNumber: 100002, currentRuntimeVersion: 'same',
+        latest: { ...VALID, version: '0.1.32', buildNumber: 200001, runtimeVersion: 'same' },
+      }).needsUpdate).toBe(true);
+    }
+    expect(evaluateBundleUpdate({
+      currentVersion: '0.1.32', currentBuildNumber: 200001, currentRuntimeVersion: 'same',
+      latest: { ...VALID, version: '0.1.33', buildNumber: 200000 },
+    }).needsUpdate).toBe(false);
+  });
   it('优先 itms,回退 installUrl', () => {
     expect(preferredInstallUrl(VALID)).toBe(VALID.itmsUrl);
     expect(preferredInstallUrl({ installUrl: 'https://web' })).toBe('https://web');

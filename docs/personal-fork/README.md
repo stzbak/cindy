@@ -22,63 +22,90 @@ The intended boundary is: hide every personal-client entry point, stop backgroun
 
 When updating upstream, prefer adding checks through the two `personalProfile` modules and keep feature gates near existing composition points. Avoid deleting schema, migrations, protocol types, or shared feature modules unless the platform behavior itself changes.
 
-## Upstream tracking model
+## Weekly upstream tracking and stable publication
 
-The official repository at `https://github.com/makecindy/cindy` is the source of truth. The `personal` branch is expected to contain a small commit stack on top of official `main`; it must not accumulate unrelated merges, generated native projects, or local build files.
+GitHub Actions runs `personal-upstream.yml` each **Saturday at 07:45
+Asia/Singapore** (Friday 23:45 UTC; cron `45 23 * * 5`). The default branch is
+`personal`. GitHub may delay scheduled starts; manual dispatch remains available.
 
-GitHub only schedules workflows and exposes manual dispatch when the workflow exists on the repository default branch. Set the fork default branch to `personal` after this patch is pushed; the daily schedule and `workflow_dispatch` become available then.
+1. Fetch official main and rebase the small Personal commit stack.
+2. Put changes on isolated `automation/upstream-sync-staging`. A conflict aborts
+   the rebase and reports an issue without changing Personal or the latest release.
+3. Explicitly dispatch the unified `personal-release.yml` pipeline, because
+   built-in token pushes do not trigger ordinary push workflows.
+4. Pin the source SHA, current public official Windows/Android versions, and an
+   internal build sequence. If source and both versions match the complete latest
+   release, stop successfully without rebuilding.
+5. Run boundary checks, typechecks, focused regressions, Windows CN installer and
+   hotfix packaging, and signed Android CN APK packaging. All must succeed.
+6. For rebased candidates, atomically back up the old Personal HEAD to
+   `automation/personal-backup-<run_id>` and promote using an exact
+   `--force-with-lease`. Concurrent Personal changes stop promotion. Direct
+   Personal builds refuse publication if Personal moved during the build.
+7. Upload both platforms, metadata and SHA256SUMS to a draft Release, then mark
+   the complete release stable/latest. Published releases are immutable. Failure
+   reports retain the previous complete stable release.
 
-The daily workflow `.github/workflows/personal-upstream.yml` runs at 23:45 UTC (07:45 Singapore time) and performs this sequence:
+Automatic promotion and publication are owner-authorized. There is no routine
+manual-merge gate. If publication fails after promotion, the prior branch state is
+in the backup ref and the old stable release remains live; fix and dispatch again.
+Actions uses the repository-scoped built-in token, with contents/actions/issues
+permissions as required. No personal access token or external scheduler is needed.
+GitHub may disable schedules on inactive public forks; check Actions if no weekly
+run appears. Failures create GitHub issues; delivery depends on GitHub notification
+settings.
 
-1. Fetch official `main`.
-2. Rebase the Personal commit stack onto the fetched commit.
-3. Push the result to the isolated `automation/upstream-sync-staging` branch.
-4. Run typechecks, profile tests, an unsigned Windows CN package build, and a signed Android APK build.
-5. Move the verified commit to `automation/upstream-sync` and open or update a draft PR into `personal` only after those checks pass.
-6. Leave review and merge to the owner. The workflow never promotes or merges the branch automatically.
+### Versions, source identity and update feeds
 
-A conflict aborts the rebase and restores the original `personal` HEAD. The workflow records the conflicting files and opens or updates the single automation-failure issue. A build failure has the same visible failure path, so a branch that did not compile cannot be presented as the next Personal release.
+Displayed versions come from the public official CN feeds in `config/endpoint.json`.
+Windows and Android have separate official version series. The internal build is
+`200000 + personal-release run_number`; Android uses it as versionCode and Windows
+embeds it for same-version rebuilds. Release tags include both versions and run.
 
-Local commands:
+The source stack tracks official **main**, which can be ahead of official release
+tags. Matching displayed versions does not mean identical official-release source.
+Each release records the actual source SHA. Do not reset this fork to an older tag
+merely to match the displayed version.
 
-- `pnpm personal:sync-upstream` rebases the current clean `personal` branch onto official `main`.
-- `pnpm personal:test-sync` tests the rebase, conflict-abort, up-to-date, and dirty-tree paths in temporary repositories.
-- `pnpm personal:verify` runs the platform typechecks and the focused companion/voice/MCP regression suite used by the automation.
+Windows replaces only the application manifest with `cindy-personal-windows.json`
+from `stzbak/cindy/releases/latest`. Claude Code, Codex, Pi and other binary
+metadata/download bases remain official. If GitHub fails, application updating
+fails closed while official engine metadata remains available. Application assets
+must belong to the same release and pass SHA256 checks. Native updater, busy-task
+confirmation, rollback and platform safety paths remain. Linux and iOS keep
+upstream update behavior. Windows uses the supported `--no-sign` build path:
+**no Authenticode certificate is configured**, so Windows trust prompts can remain.
+Windows side-by-side installation with official Cindy has not been implemented.
 
-The workflow uses these repository secrets:
+Android package `com.stzbak.cindy` coexists with official `com.xd.cindycn` and
+keeps its existing Personal signing key. Full APK updates use Personal GitHub
+latest; official JS OTA is disabled. Packaging validates package, versionName,
+versionCode, source and runtime fingerprint. TapDB remains disabled because
+official credentials are package/signature-bound. The official `cindycn` OAuth
+scheme remains; external callback selection with both apps installed still needs
+real-device validation.
 
-- `PERSONAL_MOBILE_CONFIG_JSON`: the full JSON content of `apps/mobile/scripts/self-host-regions.json`, including the CN package identity, TapDB values, and Android signing alias. The workflows override the Android package to `com.stzbak.cindy`.
-- `PERSONAL_ANDROID_KEYSTORE_BASE64`: the Android signing keystore encoded as base64.
-- `XDT_ANDROID_KEYSTORE_PASSWORD_CN`: the Android keystore password.
-- `XDT_ANDROID_KEY_PASSWORD_CN`: the Android key password.
-- `CINDY_WIN_SIGN_CMD` (optional): the external Windows signing command. Without it, the workflow still compiles an unsigned installer for validation.
+The old Windows 0.0.0 installer and Android 1.0.2 test client require **one manual
+in-place installation** of the first stable release. Subsequent releases use their
+Personal feeds. Do not uninstall Android or change its signing key for migration.
+Real-device install/replace/relaunch verification is separate from CI compilation.
 
-The Personal Android package is `com.stzbak.cindy`, so it can coexist with the official `com.xd.cindycn` app. Keep that package id and the Personal signing key stable: changing either creates a different app and prevents normal in-place updates. Personal Android disables the official TapDB SDK because the official TapDB credentials are bound to the official package/signature.
+### Local verification and signing material
 
-The daily workflow still produces validation artifacts and a draft upstream-sync PR. After a reviewed merge into `personal`, `.github/workflows/personal-android-release.yml` builds a signed APK and publishes a normal GitHub Release. Personal Android reads the latest release from `stzbak/cindy`, downloads its own signed APK, and never consumes the official APK feed.
+- `pnpm personal:sync-upstream` requires a clean Personal branch.
+- `pnpm personal:test-sync` checks rebase/conflict recovery, boundaries and atomic
+  promotion/backup in temporary repositories, including concurrent owner edits.
+- `pnpm personal:verify` runs typechecks and companion, voice, update,
+  notifications and protected MCP regression tests.
 
-The app's Personal update check uses the release metadata asset and the native Android versionCode. The release workflow assigns `1.0.<run_number>` and a monotonically increasing versionCode, then extracts the embedded runtimeVersion from the built APK. Official JS OTA checks remain disabled on Personal Android; updates are delivered as full signed APKs.
+Existing repository secrets remain:
 
-## Release identity and validation
+- `PERSONAL_MOBILE_CONFIG_JSON`: CN build/signing config; workflows override the
+  Android package to `com.stzbak.cindy`.
+- `PERSONAL_ANDROID_KEYSTORE_BASE64`: stable Personal Android keystore.
+- `XDT_ANDROID_KEYSTORE_PASSWORD_CN` and `XDT_ANDROID_KEY_PASSWORD_CN`.
 
-Both release workflows check out the triggering commit (`github.sha`) and create
-the release tag with that exact target. A rerun refuses an existing tag that
-resolves to another commit. Android validates the built APK package, versionName
-and versionCode with aapt2, and records its source commit, CN region and embedded
-runtime fingerprint in the update metadata. Windows validates CN, win32/x64 and
-the source commit from build-info.json before publication.
-
-Windows CN is currently a manual, unsigned, versionless validation release from
-`personal-windows-build.yml`. Its prereleases do not replace the Android latest
-release feed. Windows Personal automatic updating and independent installation
-identity are not implemented yet; side-by-side installation with official Windows
-Cindy has not been verified.
-
-Android has a separate package but retains the official `cindycn` OAuth callback
-scheme. Side-by-side external OAuth login still requires device verification;
-changing the scheme requires confirming the authentication server's callback
-contract. The daily workflow deliberately stops at a draft PR, without merging
-or publishing unreviewed upstream changes.
+Never print, commit or regenerate existing signing material during normal updates.
 
 ## Patch maintenance rules
 
@@ -95,8 +122,10 @@ When upstream moves a call site, resolve the conflict by restoring the upstream 
 
 ## Protected-path guard
 
-The automation compares the candidate with the fetched official commit before running the platform tests. `scripts/personal/check-patch-boundary.mjs` rejects Personal changes to dependency lockfiles, database migrations and local database code, general updater implementations, packaging and signing configuration, service endpoint files, generated native projects, release tooling, credentials, and shared packages other than the existing `packages/lizi-mcps` compatibility gate. The mobile updater allowlist is deliberately limited to the reviewed Personal GitHub-Release feed and build-number comparison files.
+The automation compares the candidate with the fetched official commit before running the platform tests. `scripts/personal/check-patch-boundary.mjs` rejects Personal changes to dependency lockfiles, database migrations and local database code, general updater implementations, packaging and signing configuration, service endpoint files, generated native projects, release tooling, credentials, and shared packages other than the existing `packages/lizi-mcps` compatibility gate. Updater allowlists cover only reviewed Personal feeds/build-number comparison files and the explicit Personal Windows packaging flag. Native updaters and signing configuration remain protected.
 
 The guard is intentionally strict. If a future change genuinely needs to cross one of these boundaries, update the guard and its tests in the same reviewed commit instead of bypassing the failure.
 
-The workflow uses the repository-scoped built-in `GITHUB_TOKEN` for branch pushes, draft PRs, and failure issues. Enable **Allow GitHub Actions to create and approve pull requests** in repository Actions settings. GitHub suppresses follow-on PR CI for PRs created with this token; the workflow's own typechecks and builds are therefore the required validation. Android secrets contain credentials or signing material and must never be committed or pasted into build logs.
+Workflow permissions are scoped to this fork. CI validates the pinned candidate
+before promotion/publication. Signing material and private build configuration
+must never appear in source, release assets or logs.

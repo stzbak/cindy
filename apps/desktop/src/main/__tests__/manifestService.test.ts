@@ -7,6 +7,7 @@ import { TEST_CDN_BASE_URL } from '../../test/vitest/clientEndpointsFixture';
 const originalPlatform = process.platform;
 const originalArch = process.arch;
 const netRequest = vi.hoisted(() => vi.fn());
+const netFetch = vi.hoisted(() => vi.fn());
 const canaryRead = vi.hoisted(() => vi.fn(() => false));
 const isBetaChannelEnabled = vi.hoisted(() => vi.fn(() => false));
 const getClientEndpoint = vi.hoisted(() => vi.fn(() => TEST_CDN_BASE_URL));
@@ -16,7 +17,7 @@ vi.mock('electron', () => ({
     isPackaged: true,
     getPath: vi.fn(() => '/tmp'),
   },
-  net: { request: netRequest },
+  net: { request: netRequest, fetch: netFetch },
 }));
 
 vi.mock('../canaryFlagStore', () => ({
@@ -80,6 +81,7 @@ function setRuntime(platform: NodeJS.Platform, arch: string): void {
 describe('manifestService cache channel identity', () => {
   beforeEach(() => {
     netRequest.mockReset();
+    netFetch.mockReset();
     canaryRead.mockReset();
     canaryRead.mockReturnValue(false);
     isBetaChannelEnabled.mockReset();
@@ -91,6 +93,41 @@ describe('manifestService cache channel identity', () => {
   afterEach(async () => {
     const { clearCachedManifest } = await import('../manifestService');
     clearCachedManifest();
+  });
+
+  it('replaces only the Windows app and never falls back to the official app on Personal feed failure', async () => {
+    const service = await import('../manifestService');
+    setRuntime('win32', 'x64');
+    const root = 'https://github.com/stzbak/cindy/releases/download/test/';
+    const asset = (name: string) => ({ file: root + name, sha256: 'a'.repeat(64), size: 12 });
+    const app = { version: '0.1.121', personalBuildNumber: 200001, hotfix: asset('app.zip'), installer: asset('app.exe') };
+    netFetch.mockResolvedValueOnce(new Response(JSON.stringify({ assets: ['cindy-personal-windows.json', 'app.zip', 'app.exe'].map(name => ({ name, browser_download_url: root + name })) })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ region: 'cn', platform: 'win32-x64', app })));
+    mockManifestResponse(JSON.stringify({ app: { version: '99.0.0' }, codex: { version: 'official-engine' } }));
+    try {
+      await expect(service.fetchManifest()).resolves.toMatchObject({ app, codex: { version: 'official-engine' } });
+      netFetch.mockRejectedValueOnce(new Error('offline'));
+      mockManifestResponse(JSON.stringify({ app: { version: '99.0.0' }, codex: { version: 'official-engine' } }));
+      await expect(service.fetchManifest()).resolves.toMatchObject({ app: { version: '' }, codex: { version: 'official-engine' } });
+    } finally { setRuntime(originalPlatform, originalArch); }
+  });
+
+  it('preserves official engines when the Personal app feed times out', async () => {
+    const service = await import('../manifestService');
+    setRuntime('win32', 'x64');
+    vi.useFakeTimers();
+    netFetch.mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new Error('timeout')), { once: true });
+    }));
+    mockManifestResponse(JSON.stringify({ app: { version: '99.0.0' }, pi: { version: 'official-pi' } }));
+    try {
+      const pending = service.fetchManifest(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+      await expect(pending).resolves.toMatchObject({ app: { version: '' }, pi: { version: 'official-pi' } });
+    } finally {
+      vi.useRealTimers();
+      setRuntime(originalPlatform, originalArch);
+    }
   });
 
   // Optional binary preparation observes metadata; it cannot change the result
@@ -152,6 +189,7 @@ describe('manifestService cache channel identity', () => {
 describe('probeBetaManifest', () => {
   beforeEach(() => {
     netRequest.mockReset();
+    netFetch.mockReset();
     canaryRead.mockReset();
     canaryRead.mockReturnValue(false);
     isBetaChannelEnabled.mockReset();

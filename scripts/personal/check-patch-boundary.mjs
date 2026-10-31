@@ -35,6 +35,12 @@ const allowedMobileUpdaterFiles = new Set([
   'apps/mobile/src/update/useStartupOtaGate.ts',
 ]);
 
+// Owner-authorized Personal app feed and versioned Windows packaging only.
+const allowedDesktopUpdateFiles = new Set([
+  'apps/desktop/src/main/updateService.ts',
+  'apps/desktop/scripts/package-desktop.mjs',
+]);
+
 const protectedPaths = [
   { pattern: /^pnpm-lock\.yaml$/, reason: 'dependency lockfile' },
   { pattern: /^\.github\/workflows\/ci\.yml$/, reason: 'upstream CI workflow' },
@@ -65,7 +71,7 @@ const files = git(['diff', '--name-only', base + '...HEAD'])
   .filter(Boolean);
 const violations = [];
 for (const file of files) {
-  if (allowedMobileUpdaterFiles.has(file)) continue;
+  if (allowedMobileUpdaterFiles.has(file) || allowedDesktopUpdateFiles.has(file)) continue;
   for (const entry of protectedPaths) {
     if (entry.pattern.test(file)) violations.push({ file, reason: entry.reason });
   }

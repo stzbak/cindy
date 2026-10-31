@@ -144,7 +144,8 @@ export function evaluateBundleUpdate({
 
   const currentAppVersion = String(currentVersion ?? '').trim();
   if (!isSupportedBundleVersion(currentAppVersion)) return NO_UPDATE;
-  if (compareVersions(record.version, currentAppVersion) <= 0) return NO_UPDATE;
+  if ((currentBuildNumber === undefined || currentBuildNumber === null)
+      && compareVersions(record.version, currentAppVersion) <= 0) return NO_UPDATE;
 
   const usesBuildNumber = currentBuildNumber !== undefined && currentBuildNumber !== null;
   const currentBuild = usesBuildNumber ? positiveBuildNumber(currentBuildNumber) : null;

@@ -1,10 +1,20 @@
 name: personal-windows-build
 
 on:
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: number
+      release_tag:
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: personal-windows-build
@@ -15,6 +25,10 @@ env:
   ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
   ELECTRON_OVERRIDE_DIST_PATH: '${{ github.workspace }}/.electron-stub-dist'
   NODE_OPTIONS: '--max-old-space-size=8192'
+  CINDY_PERSONAL_BUILD: '1'
+  PERSONAL_APP_VERSION: ${{ inputs.version }}
+  PERSONAL_BUILD_NUMBER: ${{ inputs.build_number }}
+  PERSONAL_RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
   build-and-publish:
@@ -43,14 +57,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Bake Personal update build identity
+        shell: pwsh
+        run: |
+          "export const PERSONAL_BUILD_NUMBER: number = $env:PERSONAL_BUILD_NUMBER;" | Set-Content 'apps/desktop/src/shared/personalBuild.ts' -Encoding utf8NoBOM
+
       - name: Build unsigned Windows installer
         shell: pwsh
-        run: pnpm release:package -- --platform win32 --arch x64 --region cn --no-sign
+        run: pnpm release:package -- --platform win32 --arch x64 --region cn --version "$env:PERSONAL_APP_VERSION" --no-sign
 
       - name: Prepare release assets
         shell: pwsh
         run: |
-          $artifactDir = 'apps/desktop/release/artifacts/cn/unversioned/win32-x64'
+          $artifactDir = "apps/desktop/release/artifacts/cn/$env:PERSONAL_APP_VERSION/win32-x64"
           $installer = Get-ChildItem $artifactDir -Filter '*Setup.exe' | Select-Object -First 1
           if (-not $installer) { throw 'Windows installer was not produced' }
           $outDir = Join-Path $env:RUNNER_TEMP 'personal-windows-release'
@@ -59,36 +78,29 @@ jobs:
           Copy-Item $installer.FullName $target
           $buildInfo = Join-Path $artifactDir 'build-info.json'
           $info = Get-Content $buildInfo -Raw | ConvertFrom-Json
-          if ($info.region -ne 'cn' -or $info.platform -ne 'win32' -or $info.arch -ne 'x64' -or $info.commitSha -ne $env:GITHUB_SHA) {
+          if ($info.region -ne 'cn' -or $info.platform -ne 'win32' -or $info.arch -ne 'x64' -or $info.commitSha -ne $env:GITHUB_SHA -or $info.version -ne $env:PERSONAL_APP_VERSION -or $info.versionless) {
             throw 'Windows build metadata does not match the requested CN source/platform'
           }
           Copy-Item $buildInfo (Join-Path $outDir 'build-info.json')
+          $hotfix = Get-ChildItem $artifactDir -Filter '*-hotfix.zip' | Select-Object -First 1
+          if (-not $hotfix) { throw 'Windows hotfix ZIP is missing' }
+          $hotfixTarget = Join-Path $outDir "cindy-personal-windows-cn-x64-$env:PERSONAL_BUILD_NUMBER-hotfix.zip"
+          Copy-Item $hotfix.FullName $hotfixTarget
+          $baseUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:PERSONAL_RELEASE_TAG/"
+          $app = @{
+            version = $env:PERSONAL_APP_VERSION
+            personalBuildNumber = [int]$env:PERSONAL_BUILD_NUMBER
+            installer = @{ file = $baseUrl + (Split-Path $target -Leaf); sha256 = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant(); size = (Get-Item $target).Length }
+            hotfix = @{ file = $baseUrl + (Split-Path $hotfixTarget -Leaf); sha256 = (Get-FileHash $hotfixTarget -Algorithm SHA256).Hash.ToLowerInvariant(); size = (Get-Item $hotfixTarget).Length }
+          }
+          @{ region = 'cn'; platform = 'win32-x64'; sourceCommit = $env:GITHUB_SHA; app = $app } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $outDir 'cindy-personal-windows.json') -Encoding utf8NoBOM
           $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  cindy-personal-windows-cn-x64.exe" | Set-Content (Join-Path $outDir 'SHA256SUMS') -Encoding utf8NoBOM
           Get-ChildItem $outDir | Format-Table Name,Length
 
-      - name: Publish unsigned Windows prerelease
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = 'personal-windows-cn-${{ github.run_number }}'
-          $notes = Join-Path $env:RUNNER_TEMP 'windows-release-notes.md'
-          @"
-          Unsigned Personal Windows build from ${{ github.sha }}.
-
-          - Package: Cindy Personal Windows CN x64
-          - Automatic update: disabled because this is a versionless unsigned validation build
-          - Windows signing: not configured
-          - This release is marked prerelease so it does not replace the Android latest-release feed
-          "@ | Set-Content $notes -Encoding utf8NoBOM
-          $assets = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'personal-windows-release') | ForEach-Object { $_.FullName }
-          if (gh release view $tag 2>$null) {
-            $tagCommit = gh api "repos/$env:GITHUB_REPOSITORY/commits/$tag" --jq '.sha'
-            if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $env:GITHUB_SHA) { throw 'Existing Windows release belongs to a different commit' }
-            gh release upload $tag @assets --clobber
-            gh release edit $tag --title "Cindy Personal Windows CN unsigned $tag" --notes-file $notes
-          } else {
-            gh release create $tag @assets --target $env:GITHUB_SHA --prerelease --title "Cindy Personal Windows CN unsigned $tag" --notes-file $notes
-          }
-          gh release view $tag --json url,assets --jq '"Release: \(.url)\nAssets: \([.assets[].name] | join(", "))"'
+      - name: Upload validated Windows release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-windows-release
+          path: ${{ runner.temp }}/personal-windows-release/*
+          if-no-files-found: error

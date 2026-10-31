@@ -50,11 +50,12 @@ test('allows the Personal gate layer and its documentation', () => {
   }
 });
 
-test('allows only the reviewed Personal mobile updater delta', () => {
+test('allows only the reviewed Personal updater deltas', () => {
   const repo = initializeRepository();
   try {
     const base = git(['rev-parse', 'HEAD'], repo);
     write(repo, 'apps/mobile/src/update/fetchPersonalLatestRelease.ts', 'export const feed = true;\n');
+    write(repo, 'apps/desktop/src/main/updateService.ts', 'export const personalFeed = true;\n');
     git(['commit', '-m', 'personal updater'], repo);
     const allowed = run(process.execPath, [SCRIPT, '--base', base], repo);
     assert.equal(allowed.status, 0, allowed.stderr || allowed.stdout);

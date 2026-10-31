@@ -25,6 +25,9 @@ import { getClientEndpoint } from './clientEndpointsService';
 import { isBetaChannelEnabled } from './updateChannelStore';
 import { parseAppUpdateVersion } from './updateVersionPolicy';
 
+import { isPersonalAppUpdateEnabled } from '../shared/personalProfile';
+import { fetchPersonalWindowsAppManifest } from './personalAppUpdate';
+
 const log = createLogger('manifestService');
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -37,6 +40,7 @@ export interface PlatformAsset {
 }
 
 export interface AppManifest {
+  personalBuildNumber?: number;
   version: string;
   releaseNotes?: string;
   /** Hotfix ZIP for auto-update */
@@ -182,6 +186,7 @@ export async function fetchManifest(
   const url = `${getBaseUrl()}/manifest-${getPlatformKey()}${channelSuffix}.json?t=${Date.now()}`;
   // 快照发起时的代际:响应完成写 cached 前核对,期间切渠道则作废本次结果。
   const epochAtStart = manifestEpoch;
+  const deadline = Date.now() + (timeoutMs ?? REQUEST_TIMEOUT_MS);
   log.info('Fetching (%s channel): %s', channel, url);
 
   return new Promise<Manifest | null>((resolve) => {
@@ -234,10 +239,22 @@ export async function fetchManifest(
           }
           body += chunk.toString();
         });
-        response.on('end', () => {
+        response.on('end', async () => {
           if (settled) return;
           try {
             const json = JSON.parse(body) as Manifest;
+            if (isPersonalAppUpdateEnabled(process.platform)) {
+              // The official response is complete. Let the Personal request own
+              // the remaining deadline so its failure cannot discard engine metadata.
+              clearTimeout(timeout);
+              json.app = { version: '' }; // invalid app identity prevents official fallback
+              try {
+                json.app = await fetchPersonalWindowsAppManifest(Math.max(1, deadline - Date.now()), signal, (url, options) => net.fetch(url, options));
+              } catch {
+                log.warn('Personal app feed unavailable; retaining official engine metadata only');
+              }
+              if (settled) return;
+            }
             // 响应回来前切了渠道:这是旧渠道的 manifest,不作废会污染 cached,
             // 让后续 agent prepare 装旧渠道资产。返回 null 让调用方下次按新渠道重取。
             // 共库另一实例改开关不会推进本进程 epoch,所以还要再对一次当前通道。

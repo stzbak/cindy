@@ -1,21 +1,17 @@
 name: personal-android-release
 
 on:
-  push:
-    branches:
-      - personal
-    paths:
-      - 'apps/**'
-      - 'packages/**'
-      - 'config/**'
-      - 'scripts/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/personal-android-release.yml'
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: number
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: personal-android-release
@@ -61,8 +57,8 @@ jobs:
 
       - name: Prepare Personal release identity
         run: |
-          version="1.0.$GITHUB_RUN_NUMBER"
-          version_code=$((100000 + GITHUB_RUN_NUMBER))
+          version="${{ inputs.version }}"
+          version_code="${{ inputs.build_number }}"
           printf 'PERSONAL_APP_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
           printf 'PERSONAL_ANDROID_VERSION_CODE=%s\n' "$version_code" >> "$GITHUB_ENV"
           node - "$version" <<'NODE'
@@ -120,6 +116,12 @@ jobs:
           const aapt2 = fs.readdirSync(toolsDir).sort().reverse()
             .map(version => path.join(toolsDir, version, 'aapt2')).find(file => fs.existsSync(file));
           if (!aapt2) throw new Error('aapt2 is required for APK validation');
+          const signer = path.join(path.dirname(aapt2), 'apksigner');
+          const signature = execFileSync(signer, ['verify', '--verbose', '--print-certs', apk], { encoding: 'utf8' });
+          const certificate = signature.match(/Signer #1 certificate SHA-256 digest: ([a-f0-9]+)/i)?.[1]?.toLowerCase();
+          if (certificate !== 'e7e234dfe1541acd2e9926b2198bfaaba2fe5dba842e4b2cee1ae4940c88efb7') {
+            throw new Error('APK signing certificate changed; refusing an incompatible update');
+          }
           const badging = execFileSync(aapt2, ['dump', 'badging', apk], { encoding: 'utf8' });
           const identity = badging.match(/^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'/m);
           if (!identity || identity[1] !== process.env.PERSONAL_ANDROID_PACKAGE ||
@@ -139,35 +141,11 @@ jobs:
           NODE
           sha256sum "$RUNNER_TEMP/android-artifacts/cindy-personal-android.apk" "$RUNNER_TEMP/android-artifacts/cindy-personal-android.json" > "$RUNNER_TEMP/android-artifacts/SHA256SUMS"
 
-      - name: Publish Personal GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="personal-v$PERSONAL_APP_VERSION"
-          notes="$RUNNER_TEMP/release-notes.md"
-          cat > "$notes" <<EOF
-          Personal Android release $PERSONAL_APP_VERSION.
-
-          - Package: $PERSONAL_ANDROID_PACKAGE
-          - versionCode: $PERSONAL_ANDROID_VERSION_CODE
-          - Commit: $GITHUB_SHA
-          - This APK is signed by the Personal keystore and updates only the Personal app.
-          EOF
-          apk="$RUNNER_TEMP/android-artifacts/cindy-personal-android.apk"
-          metadata="$RUNNER_TEMP/android-artifacts/cindy-personal-android.json"
-          checksums="$RUNNER_TEMP/android-artifacts/SHA256SUMS"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')
-            test "$tag_commit" = "$GITHUB_SHA" || { echo 'Existing Android release belongs to a different commit'; exit 1; }
-            gh release upload "$tag" "$apk" "$metadata" "$checksums" --clobber
-            gh release edit "$tag" --title "Cindy Personal Android $PERSONAL_APP_VERSION" --notes-file "$notes"
-          else
-            gh release create "$tag" --target "$GITHUB_SHA" "$apk" "$metadata" "$checksums" --title "Cindy Personal Android $PERSONAL_APP_VERSION" --notes-file "$notes"
-          fi
-
-      - name: Summarize release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="personal-v$PERSONAL_APP_VERSION"
-          gh release view "$tag" --json url,assets --jq '"Release: \(.url)\nAssets: \([.assets[].name] | join(", "))"' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload validated Android release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-android-release
+          path: |
+            ${{ runner.temp }}/android-artifacts/cindy-personal-android.apk
+            ${{ runner.temp }}/android-artifacts/cindy-personal-android.json
+          if-no-files-found: error

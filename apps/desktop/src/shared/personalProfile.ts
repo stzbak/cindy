@@ -5,10 +5,15 @@
  * merges one stable file to reconcile when the personal profile changes.
  */
 export const PERSONAL_PROFILE_FEATURES = Object.freeze({
+  usePersonalWindowsUpdates: true,
   disableWindowsComposerVoiceInput: true,
   disableWindowsCompanions: true,
   disableWindowsCompanionCalls: true,
 });
+
+export function isPersonalAppUpdateEnabled(platform: string): boolean {
+  return PERSONAL_PROFILE_FEATURES.usePersonalWindowsUpdates && platform === 'win32';
+}
 
 export function isComposerVoiceInputEnabled(platform: string): boolean {
   return !(PERSONAL_PROFILE_FEATURES.disableWindowsComposerVoiceInput && platform === 'win32');
