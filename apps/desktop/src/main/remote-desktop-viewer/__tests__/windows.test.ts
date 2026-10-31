@@ -128,6 +128,26 @@ afterEach(() => {
 const event = (win: any) => ({ sender: win.webContents, senderFrame: win.webContents.mainFrame });
 const call = (channel: string, win: any, ...args: unknown[]) =>
   fixture.handlers.get(channel)!(event(win), ...args);
+// Unit: Personal cold-open policy, missing from the default warm-window cases.
+// prewarm -> open -> handshake must create one usable viewer, with no spare.
+it('opens a viewer on demand with presentation gating and no prewarmed spare', () => {
+  const sender: any = { id: 100 };
+  manager = new RemoteDesktopViewerWindows(value => value === sender, false);
+  manager.register();
+  manager.prewarm();
+  expect(fixture.windows).toHaveLength(0);
+  manager.open(sender, { deviceId: 'a', name: 'A' });
+  expect(fixture.windows).toHaveLength(1);
+  const win = fixture.windows[0];
+  expect(win.isVisible()).toBe(false);
+  call(REMOTE_VIEWER.READY, win);
+  expect(win.isVisible()).toBe(false);
+  call(REMOTE_VIEWER.PRESENTED, win);
+  expect(win.isVisible()).toBe(true);
+  manager.open(sender, { deviceId: 'a', name: 'A' });
+  expect(fixture.windows).toHaveLength(1);
+});
+
 it.each([
   ['DESKTOP_LEASE_EXPIRED', 'DESKTOP_LEASE_EXPIRED', 'DESKTOP_LEASE_EXPIRED'],
   ['DESKTOP_VIDEO_TIMEOUT', 'DESKTOP_VIDEO_TIMEOUT', 'DESKTOP_VIDEO_TIMEOUT'],

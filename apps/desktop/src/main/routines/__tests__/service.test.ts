@@ -1,6 +1,7 @@
 import type { RoutineState, RoutineRun, Schedule, ScheduleRun } from '@cindy/maker-scheduler';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({
+  companionsEnabled: true,
   scope: 'owner-a',
   followUpEvents: vi.fn<(botId: string, events: RoutineRun['events']) => RoutineRun['events'] | null>((_id, events) => events),
   boundaryPending: false,
@@ -28,6 +29,7 @@ const mock = vi.hoisted(() => ({
     delete: vi.fn(async () => {}),
   },
 }));
+vi.mock('../../../shared/personalProfile.js', () => ({ isCompanionsEnabled: () => mock.companionsEnabled }));
 vi.mock('../../bot-autonomy/hub.js', () => ({ currentFollowUpEvents: async (botId: string, input: RoutineRun['events']) => {
   const events = mock.followUpEvents(botId, input);
   return events === null ? null : { events, canDispatch: () => mock.followUpEvents(botId, input)?.length === events.length };
@@ -62,7 +64,7 @@ vi.mock('../store.js', () => ({
     save = mock.save;
   },
 }));
-import { configureRoutineHost, getRoutineEngine, readRoutineLaneModel, routineTools, stopRoutines, updateBotRoutineLifecycle } from '../service.js';
+import { configureRoutineHost, getRoutineEngine, pauseDisabledCompanionRoutines, readRoutineLaneModel, routineTools, stopRoutines, updateBotRoutineLifecycle } from '../service.js';
 import { handleRoutineRequest } from '../../cindy-brain/routineSlot.js';
 import type { InstalledGhost } from '../../../shared/ghost.js';
 import { companionHomes } from '../../companion-cloud/homes.js';
@@ -79,6 +81,7 @@ afterEach(async () => {
   vi.clearAllMocks();
   mock.followUpEvents.mockImplementation((_id, events) => events);
   mock.scope = 'owner-a';
+  mock.companionsEnabled = true;
   mock.boundaryPending = false;
   mock.schedulerReady = true;
   mock.dbReady = true;
@@ -88,6 +91,48 @@ afterEach(async () => {
   mock.profiles = [];
   vi.useRealTimers();
 });
+// Unit: Windows Personal must retain rules while stopping periodic routine work.
+// Existing lifecycle cases cover a running engine, not disabled cold startup.
+it('rejects lazy engine startup without reading rules or scheduling a timer when companions are disabled', async () => {
+  mock.companionsEnabled = false;
+  vi.useFakeTimers();
+  await expect(getRoutineEngine()).rejects.toThrow('COMPANION_RUNTIME_DISABLED');
+  expect(mock.load).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('pauses only persisted routine backing schedules without starting an engine or rewriting history', async () => {
+  const engine = await getRoutineEngine();
+  const rule = await engine.put('bot', { name: 'Review', prompt: 'Check', enabled: true,
+    triggers: [{ id: 'tick', kind: 'interval', intervalMs: 60000 }] });
+  const saved = structuredClone(mock.save.mock.calls.at(-1)![0]);
+  await stopRoutines();
+  vi.clearAllMocks();
+  vi.useFakeTimers();
+  mock.companionsEnabled = false;
+  mock.load.mockResolvedValue(saved);
+  mock.storage.get.mockImplementation(async id => ({ id, source: 'bot' } as Schedule));
+  await pauseDisabledCompanionRoutines();
+  expect(mock.scheduler.pause).toHaveBeenCalledExactlyOnceWith(`routine-${rule.id}`, { internalRoutine: true });
+  expect(mock.storage.get).toHaveBeenCalledExactlyOnceWith(`routine-${rule.id}`);
+  expect(mock.save).not.toHaveBeenCalled();
+  expect(mock.scheduler.delete).not.toHaveBeenCalled();
+  expect(mock.scheduler.runNow).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+  // Failed cleanup remains observable and can be retried without losing saved rules.
+  mock.scheduler.pause.mockRejectedValueOnce(new Error('pause failed'));
+  await expect(pauseDisabledCompanionRoutines()).rejects.toThrow('pause failed');
+  await pauseDisabledCompanionRoutines();
+  expect(mock.save).not.toHaveBeenCalled();
+});
+
+it('does not pause another account after the owner changes during rule loading', async () => {
+  mock.companionsEnabled = false;
+  mock.load.mockImplementationOnce(async () => { mock.scope = 'owner-b'; return null; });
+  await expect(pauseDisabledCompanionRoutines()).rejects.toThrow();
+  expect(mock.scheduler.pause).not.toHaveBeenCalled();
+});
+
 it('dispatches into the routine lane and records its task for inspection', async () => {
   const routine = await routineTools.save('bot', {
     name: 'Review',

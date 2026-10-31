@@ -54,7 +54,7 @@ vi.mock('../script-capability-broker', () => ({ SchedulerScriptCapabilityBroker:
 vi.mock('../notifier', () => ({ DesktopNotifier: class {} }));
 vi.mock('../../im/feishu/notificationOrigin', () => ({ sendFeishuSessionNotification: vi.fn() }));
 vi.mock('../../wecomGroupNotification', () => ({ wecomGroupNotificationService: {} }));
-vi.mock('../../routines/service.js', () => ({ getRoutineEngine: async () => null, stopRoutines: async () => {} }));
+vi.mock('../../routines/service.js', () => ({ getRoutineEngine: async () => null, pauseDisabledCompanionRoutines: async () => {}, stopRoutines: async () => {} }));
 
 import { resetScheduler, startScheduler } from '../index';
 

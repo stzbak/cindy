@@ -286,6 +286,8 @@ async function execute(scope: string, routine: Routine, run: RoutineRun, signal:
 
 /** The service exists only for the active local data owner. */
 export async function getRoutineEngine(): Promise<RoutineEngine> {
+  // Also reject lazy callers: hiding the UI alone must not restart the 1s timer.
+  if (!isCompanionsEnabled(process.platform)) throw new Error('COMPANION_RUNTIME_DISABLED');
   if (!app.isPackaged && process.env.XDT_SCHEDULER_PASSIVE === '1') {
     throw new Error('Routines are disabled in a passive development instance');
   }
@@ -456,6 +458,16 @@ async function cleanBackingSchedules(scope: string, ids: string[], remove: boole
     else await scheduler.pause(scheduleId, { internalRoutine: true });
     assertScope(scope);
   }
+}
+
+/** One-shot compatibility cleanup; no engine, timer, rule deletion or model dispatch. */
+export async function pauseDisabledCompanionRoutines(): Promise<void> {
+  if (isCompanionsEnabled(process.platform)) return;
+  const scope = activeOwnerScopeKey();
+  assertScope(scope);
+  const saved = await new RoutineFileStore(ownerScopedUserDataPath('routines')).load();
+  assertScope(scope);
+  await cleanBackingSchedules(scope, saved?.routines.map((routine) => routine.id) ?? [], false);
 }
 
 /** Invoked inside the Bot lifecycle lock, including before permanent profile deletion. */

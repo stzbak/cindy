@@ -412,9 +412,15 @@ describe('voice input global shortcut registration', () => {
     );
   });
 
-  it('uses the Windows low-level listener for F16 and Electron only to reserve the key', async () => {
+  // Unit: Personal Windows must keep the shortcut usable without startup ASR/overlay
+  // prewarm. The existing registration case previously did not observe that cost.
+  // Local Windows run: 58.8s for the existing 90-case suite (per-case module reloads);
+  // this regression adds assertions to an existing case, with no extra reloads.
+  it('uses the Windows low-level listener for F16 without prewarming ASR or the overlay', async () => {
     setPlatform('win32');
-    const { registerGlobalVoiceInputIpc } = await import('../global.js');
+    const { prewarmVoiceInputProvider } = await import('../index.js');
+    vi.mocked(prewarmVoiceInputProvider).mockClear();
+    const { registerGlobalVoiceInputIpc, prewarmGlobalVoiceInputOverlay } = await import('../global.js');
     registerGlobalVoiceInputIpc(mocks.ipcDeps);
     const setShortcut = mocks.handlers.get('voice-input:global-shortcut:set');
     const f16Shortcut: VoiceInputShortcut = {
@@ -429,6 +435,10 @@ describe('voice input global shortcut registration', () => {
 
     expect(mocks.windowsSetShortcut).toHaveBeenCalledWith(f16Shortcut);
     expect(mocks.registeredShortcuts.has('F16')).toBe(true);
+    expect(prewarmVoiceInputProvider).not.toHaveBeenCalled();
+    // Explicit prewarm is also inert; no delayed overlay is scheduled.
+    prewarmGlobalVoiceInputOverlay();
+    expect(setTimeout).not.toHaveBeenCalledWith(expect.any(Function), 1500);
 
     mocks.registeredShortcuts.get('F16')?.();
     expect(mocks.focusedWindow.webContents.send).not.toHaveBeenCalled();

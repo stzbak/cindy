@@ -22,6 +22,13 @@ The intended boundary is: hide every personal-client entry point, stop backgroun
 
 When updating upstream, prefer adding checks through the two `personalProfile` modules and keep feature gates near existing composition points. Avoid deleting schema, migrations, protocol types, or shared feature modules unless the platform behavior itself changes.
 
+## Windows resident resource reductions
+
+- Resource monitor, remote desktop viewer, sidebar pop-outs and the global voice overlay are created on demand. Startup prewarm and unused spare replenishment are disabled only on Windows. Existing ready/presented handshakes, permissions, reuse and recovery remain; the first open can take longer. This is the owner's explicit Personal exception to the upstream auxiliary-window prewarm baseline.
+- Personal IM bots and official Hook chat ingress are hidden from settings (including old deep links), with IPC registration, orchestrator setup and account connection disabled. Independent enterprise WeChat/ntfy notifications, ordinary task notifications, scheduler and device-link remain available. Saved IM credentials and histories stay intact.
+- Companion routine startup does not create an engine or a one-second tick timer, including lazy callers. A one-shot owner-scoped compatibility pass pauses backing schedules for saved routines without rewriting or deleting their rules/history. Ordinary schedules are unaffected.
+- macOS and Linux retain upstream behavior. These gates reduce runtime work; they do not remove bundled SDKs or claim a measured installer-size or memory saving.
+
 ## Weekly upstream tracking and stable publication
 
 GitHub Actions runs `personal-upstream.yml` each **Saturday at 07:45

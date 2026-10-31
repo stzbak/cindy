@@ -54,6 +54,7 @@
  */
 
 import { TELEGRAM_DEFAULT_BEHAVIOR } from '@cindy/im';
+import { isImBotsEnabled } from '../../shared/personalProfile.js';
 import path from 'node:path';
 
 import { ipcMain, BrowserWindow, dialog, type IpcMainEvent } from 'electron';
@@ -249,6 +250,7 @@ const WECOM_CONFIG: ImOrchestratorConfig = {
 };
 
 export function startImOrchestrators(): void {
+  if (!isImBotsEnabled(process.platform)) return;
   wechatCompatibilityPolicy.start();
   if (wired) return;
   wired = true;
@@ -895,6 +897,7 @@ export async function backfillImDefaultRoutesAtStartup(): Promise<void> {
 }
 
 export function startImConnection(): void {
+  if (!isImBotsEnabled(process.platform)) return;
   if (connectionLifecycle.isStarted()) {
     log.info('startImConnection: already started, skip');
     return;

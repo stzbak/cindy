@@ -66,7 +66,7 @@ vi.mock('@/features/bots/BotsGlobalSettingsSection', () => ({ BotsGlobalSettings
 vi.mock('../usage/UsageHistorySection', () => ({ UsageHistorySection: Stub }));
 vi.mock('../SettingsSidebarNav', () => ({ SettingsSidebarNav: Stub }));
 vi.mock('../ImBotSection', () => ({
-  ImBotSection: Stub,
+  ImBotSection: () => <p>IM bot settings</p>,
   isImBotSettingsGroup: (value: unknown) => value === 'cindy' || value === 'personal',
 }));
 vi.mock('../PiPackagesSection', () => ({
@@ -126,6 +126,19 @@ afterEach(() => {
 });
 
 describe('SettingsView Escape', () => {
+  // Unit: Windows IM removal includes legacy deep links, absent from Escape cases.
+  // The same production settings component is rendered without Electron.
+  it.each(['im-bot', 'feishu-bot', 'slack-bot', 'tina'])('blocks the Windows %s settings deep link', (tab) => {
+    vi.stubGlobal('electronAPI', { platform: 'win32', appVersion: '1.0.0' });
+    renderSettings('/settings?tab=' + tab);
+    expect(screen.queryByText('IM bot settings')).toBeNull();
+  });
+
+  it('retains IM settings on other desktop platforms', () => {
+    renderSettings('/settings?tab=im-bot');
+    expect(screen.getByText('IM bot settings')).toBeTruthy();
+  });
+
   it('returns from the Pi extensions page to General before leaving Settings', () => {
     renderSettings('/settings?openPanel=pi-extensions');
     expect(screen.getByText('PI packages')).toBeTruthy();

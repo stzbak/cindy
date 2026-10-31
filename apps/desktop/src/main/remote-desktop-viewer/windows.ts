@@ -114,8 +114,12 @@ type Entry = {
 export class RemoteDesktopViewerWindows {
   private entries = new Set<Entry>();
   private locale: SupportedLocale | null = null;
-  constructor(private readonly isOpenSender: (sender: WebContents) => boolean) {}
+  constructor(
+    private readonly isOpenSender: (sender: WebContents) => boolean,
+    private readonly prewarmEnabled = true,
+  ) {}
   prewarm(): void {
+    if (!this.prewarmEnabled) return;
     if (![...this.entries].some((e) => e.connection.target === null))
       this.create().controller.prewarm();
   }

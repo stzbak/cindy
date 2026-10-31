@@ -9,7 +9,19 @@ export const PERSONAL_PROFILE_FEATURES = Object.freeze({
   disableWindowsComposerVoiceInput: true,
   disableWindowsCompanions: true,
   disableWindowsCompanionCalls: true,
+  disableWindowsAuxiliaryPrewarm: true,
+  disableWindowsImBots: true,
 });
+
+/** Personal Windows trades first-open latency for lower startup/resident cost. */
+export function isAuxiliaryWindowPrewarmEnabled(platform: string): boolean {
+  return !(PERSONAL_PROFILE_FEATURES.disableWindowsAuxiliaryPrewarm && platform === 'win32');
+}
+
+/** Chat bot ingress is independent from notifications, scheduler and device-link. */
+export function isImBotsEnabled(platform: string): boolean {
+  return !(PERSONAL_PROFILE_FEATURES.disableWindowsImBots && platform === 'win32');
+}
 
 export function isPersonalAppUpdateEnabled(platform: string): boolean {
   return PERSONAL_PROFILE_FEATURES.usePersonalWindowsUpdates && platform === 'win32';
