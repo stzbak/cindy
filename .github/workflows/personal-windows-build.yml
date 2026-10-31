@@ -1,0 +1,88 @@
+name: personal-windows-build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: personal-windows-build
+  cancel-in-progress: false
+
+env:
+  XDT_SKIP_AGENT_BIN_INSTALL: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  ELECTRON_OVERRIDE_DIST_PATH: '${{ github.workspace }}/.electron-stub-dist'
+  NODE_OPTIONS: '--max-old-space-size=8192'
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout Personal branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: personal
+          fetch-depth: 1
+          lfs: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned Windows installer
+        shell: pwsh
+        run: pnpm release:package -- --platform win32 --arch x64 --region global --no-sign
+
+      - name: Prepare release assets
+        shell: pwsh
+        run: |
+          $artifactDir = 'apps/desktop/release/artifacts/global/unversioned/win32-x64'
+          $installer = Get-ChildItem $artifactDir -Filter '*Setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not produced' }
+          $outDir = Join-Path $env:RUNNER_TEMP 'personal-windows-release'
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          $target = Join-Path $outDir 'cindy-personal-windows-x64.exe'
+          Copy-Item $installer.FullName $target
+          $buildInfo = Join-Path $artifactDir 'build-info.json'
+          if (Test-Path $buildInfo) { Copy-Item $buildInfo (Join-Path $outDir 'build-info.json') }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  cindy-personal-windows-x64.exe" | Set-Content (Join-Path $outDir 'SHA256SUMS') -Encoding utf8NoBOM
+          Get-ChildItem $outDir | Format-Table Name,Length
+
+      - name: Publish unsigned Windows prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'personal-windows-${{ github.run_number }}'
+          $notes = Join-Path $env:RUNNER_TEMP 'windows-release-notes.md'
+          @"
+          Unsigned Personal Windows build from ${{ github.sha }}.
+
+          - Package: Cindy Personal Windows x64
+          - Automatic update: disabled because this is a versionless unsigned validation build
+          - Windows signing: not configured
+          - This release is marked prerelease so it does not replace the Android latest-release feed
+          "@ | Set-Content $notes -Encoding utf8NoBOM
+          $assets = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'personal-windows-release') | ForEach-Object { $_.FullName }
+          if (gh release view $tag 2>$null) {
+            gh release upload $tag @assets --clobber
+            gh release edit $tag --title "Cindy Personal Windows unsigned $tag" --notes-file $notes
+          } else {
+            gh release create $tag @assets --prerelease --title "Cindy Personal Windows unsigned $tag" --notes-file $notes
+          }
+          gh release view $tag --json url,assets --jq '"Release: \(.url)\nAssets: \([.assets[].name] | join(", "))"'
