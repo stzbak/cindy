@@ -164,16 +164,16 @@ jobs:
           CINDY_WIN_SIGN_CMD: ${{ secrets.CINDY_WIN_SIGN_CMD }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:CINDY_WIN_SIGN_CMD)) {
-            pnpm release:package -- --platform win32 --arch x64 --region global --no-sign
+            pnpm release:package -- --platform win32 --arch x64 --region cn --no-sign
           } else {
-            pnpm release:package -- --platform win32 --arch x64 --region global
+            pnpm release:package -- --platform win32 --arch x64 --region cn
           }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cindy-personal-windows-${{ github.run_id }}
-          path: apps/desktop/release/artifacts/global/unversioned/win32-x64/**
+          path: apps/desktop/release/artifacts/cn/unversioned/win32-x64/**
           if-no-files-found: error
 
   android-build:

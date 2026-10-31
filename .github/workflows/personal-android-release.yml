@@ -11,6 +11,7 @@ on:
       - 'scripts/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - '.github/workflows/personal-android-release.yml'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +35,7 @@ jobs:
       - name: Checkout Personal branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: personal
+          ref: ${{ github.sha }}
           fetch-depth: 1
 
       - name: Setup pnpm
@@ -106,11 +107,29 @@ jobs:
           node --input-type=module - <<'NODE'
           import fs from 'node:fs';
           import path from 'node:path';
+          import { execFileSync } from 'node:child_process';
           import { readEmbeddedRuntimeVersionFromApk } from './apps/mobile/scripts/lib/embedded-runtime.mjs';
 
           const apk = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.apk');
           const metadataPath = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.json');
+          const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          if (sourceCommit !== process.env.GITHUB_SHA) throw new Error('Android source commit mismatch');
+          const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+          if (!sdk) throw new Error('Android SDK path is required for APK validation');
+          const toolsDir = path.join(sdk, 'build-tools');
+          const aapt2 = fs.readdirSync(toolsDir).sort().reverse()
+            .map(version => path.join(toolsDir, version, 'aapt2')).find(file => fs.existsSync(file));
+          if (!aapt2) throw new Error('aapt2 is required for APK validation');
+          const badging = execFileSync(aapt2, ['dump', 'badging', apk], { encoding: 'utf8' });
+          const identity = badging.match(/^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'/m);
+          if (!identity || identity[1] !== process.env.PERSONAL_ANDROID_PACKAGE ||
+              identity[2] !== process.env.PERSONAL_ANDROID_VERSION_CODE || identity[3] !== process.env.PERSONAL_APP_VERSION) {
+            throw new Error('APK package/version does not match the Personal release');
+          }
           const metadata = {
+            sourceCommit,
+            region: 'cn',
+            packageName: identity[1],
             version: process.env.PERSONAL_APP_VERSION,
             buildNumber: Number(process.env.PERSONAL_ANDROID_VERSION_CODE),
             runtimeVersion: readEmbeddedRuntimeVersionFromApk(apk),
@@ -138,10 +157,12 @@ jobs:
           metadata="$RUNNER_TEMP/android-artifacts/cindy-personal-android.json"
           checksums="$RUNNER_TEMP/android-artifacts/SHA256SUMS"
           if gh release view "$tag" >/dev/null 2>&1; then
+            tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')
+            test "$tag_commit" = "$GITHUB_SHA" || { echo 'Existing Android release belongs to a different commit'; exit 1; }
             gh release upload "$tag" "$apk" "$metadata" "$checksums" --clobber
             gh release edit "$tag" --title "Cindy Personal Android $PERSONAL_APP_VERSION" --notes-file "$notes"
           else
-            gh release create "$tag" "$apk" "$metadata" "$checksums" --title "Cindy Personal Android $PERSONAL_APP_VERSION" --notes-file "$notes"
+            gh release create "$tag" --target "$GITHUB_SHA" "$apk" "$metadata" "$checksums" --title "Cindy Personal Android $PERSONAL_APP_VERSION" --notes-file "$notes"
           fi
 
       - name: Summarize release

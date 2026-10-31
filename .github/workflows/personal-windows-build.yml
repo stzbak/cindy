@@ -24,7 +24,7 @@ jobs:
       - name: Checkout Personal branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: personal
+          ref: ${{ github.sha }}
           fetch-depth: 0
           lfs: true
 
@@ -45,22 +45,26 @@ jobs:
 
       - name: Build unsigned Windows installer
         shell: pwsh
-        run: pnpm release:package -- --platform win32 --arch x64 --region global --no-sign
+        run: pnpm release:package -- --platform win32 --arch x64 --region cn --no-sign
 
       - name: Prepare release assets
         shell: pwsh
         run: |
-          $artifactDir = 'apps/desktop/release/artifacts/global/unversioned/win32-x64'
+          $artifactDir = 'apps/desktop/release/artifacts/cn/unversioned/win32-x64'
           $installer = Get-ChildItem $artifactDir -Filter '*Setup.exe' | Select-Object -First 1
           if (-not $installer) { throw 'Windows installer was not produced' }
           $outDir = Join-Path $env:RUNNER_TEMP 'personal-windows-release'
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-          $target = Join-Path $outDir 'cindy-personal-windows-x64.exe'
+          $target = Join-Path $outDir 'cindy-personal-windows-cn-x64.exe'
           Copy-Item $installer.FullName $target
           $buildInfo = Join-Path $artifactDir 'build-info.json'
-          if (Test-Path $buildInfo) { Copy-Item $buildInfo (Join-Path $outDir 'build-info.json') }
+          $info = Get-Content $buildInfo -Raw | ConvertFrom-Json
+          if ($info.region -ne 'cn' -or $info.platform -ne 'win32' -or $info.arch -ne 'x64' -or $info.commitSha -ne $env:GITHUB_SHA) {
+            throw 'Windows build metadata does not match the requested CN source/platform'
+          }
+          Copy-Item $buildInfo (Join-Path $outDir 'build-info.json')
           $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  cindy-personal-windows-x64.exe" | Set-Content (Join-Path $outDir 'SHA256SUMS') -Encoding utf8NoBOM
+          "$hash  cindy-personal-windows-cn-x64.exe" | Set-Content (Join-Path $outDir 'SHA256SUMS') -Encoding utf8NoBOM
           Get-ChildItem $outDir | Format-Table Name,Length
 
       - name: Publish unsigned Windows prerelease
@@ -68,21 +72,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = 'personal-windows-${{ github.run_number }}'
+          $tag = 'personal-windows-cn-${{ github.run_number }}'
           $notes = Join-Path $env:RUNNER_TEMP 'windows-release-notes.md'
           @"
           Unsigned Personal Windows build from ${{ github.sha }}.
 
-          - Package: Cindy Personal Windows x64
+          - Package: Cindy Personal Windows CN x64
           - Automatic update: disabled because this is a versionless unsigned validation build
           - Windows signing: not configured
           - This release is marked prerelease so it does not replace the Android latest-release feed
           "@ | Set-Content $notes -Encoding utf8NoBOM
           $assets = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'personal-windows-release') | ForEach-Object { $_.FullName }
           if (gh release view $tag 2>$null) {
+            $tagCommit = gh api "repos/$env:GITHUB_REPOSITORY/commits/$tag" --jq '.sha'
+            if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $env:GITHUB_SHA) { throw 'Existing Windows release belongs to a different commit' }
             gh release upload $tag @assets --clobber
-            gh release edit $tag --title "Cindy Personal Windows unsigned $tag" --notes-file $notes
+            gh release edit $tag --title "Cindy Personal Windows CN unsigned $tag" --notes-file $notes
           } else {
-            gh release create $tag @assets --prerelease --title "Cindy Personal Windows unsigned $tag" --notes-file $notes
+            gh release create $tag @assets --target $env:GITHUB_SHA --prerelease --title "Cindy Personal Windows CN unsigned $tag" --notes-file $notes
           }
           gh release view $tag --json url,assets --jq '"Release: \(.url)\nAssets: \([.assets[].name] | join(", "))"'

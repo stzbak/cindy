@@ -44,7 +44,7 @@ import {
   simpleScrollScreenSafeAreaEdges,
   usesNativePullDownMenu,
 } from '@/platform/chrome';
-import { isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
+import { isCompanionsEnabled, isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
 import {
   APP_BINARY_VERSION,
   AUTH_API_BASE_URL,
@@ -735,7 +735,7 @@ export default function SettingsScreen() {
         {isPushSupported() ? (
           <SettingsGroup
             footer={t('settings.notifications.taskDoneHint')
-              + (isChatBackgroundSupported() ? ` ${t('settings.notifications.backgroundHint')}` : '')
+              + (isCompanionsEnabled(Platform.OS) && isChatBackgroundSupported() ? ` ${t('settings.notifications.backgroundHint')}` : '')
               + (selfHostedRelay ? ` ${t('relay.settings.pushUnavailable')}` : '')}
             messages={[pushMessage ? { text: pushMessage, testID: 'settings.pushMessage' } : null]}
             title={t('settings.notifications.sectionTitle')}
@@ -764,7 +764,7 @@ export default function SettingsScreen() {
                 }).catch(error => setPushMessage(formatRemoteError(error))).finally(() => setPushBusy(false));
               }}
             />
-            {isChatBackgroundSupported() ? <SettingsSwitchRow
+            {isCompanionsEnabled(Platform.OS) && isChatBackgroundSupported() ? <SettingsSwitchRow
               accessibilityLabel={t('settings.notifications.background')}
               label={t('settings.notifications.background')}
               value={chatBackground}

@@ -33,7 +33,7 @@ The daily workflow `.github/workflows/personal-upstream.yml` runs at 23:45 UTC (
 1. Fetch official `main`.
 2. Rebase the Personal commit stack onto the fetched commit.
 3. Push the result to the isolated `automation/upstream-sync-staging` branch.
-4. Run typechecks, profile tests, an unsigned Windows package build, and a signed Android APK build.
+4. Run typechecks, profile tests, an unsigned Windows CN package build, and a signed Android APK build.
 5. Move the verified commit to `automation/upstream-sync` and open or update a draft PR into `personal` only after those checks pass.
 6. Leave review and merge to the owner. The workflow never promotes or merges the branch automatically.
 
@@ -58,6 +58,27 @@ The Personal Android package is `com.stzbak.cindy`, so it can coexist with the o
 The daily workflow still produces validation artifacts and a draft upstream-sync PR. After a reviewed merge into `personal`, `.github/workflows/personal-android-release.yml` builds a signed APK and publishes a normal GitHub Release. Personal Android reads the latest release from `stzbak/cindy`, downloads its own signed APK, and never consumes the official APK feed.
 
 The app's Personal update check uses the release metadata asset and the native Android versionCode. The release workflow assigns `1.0.<run_number>` and a monotonically increasing versionCode, then extracts the embedded runtimeVersion from the built APK. Official JS OTA checks remain disabled on Personal Android; updates are delivered as full signed APKs.
+
+## Release identity and validation
+
+Both release workflows check out the triggering commit (`github.sha`) and create
+the release tag with that exact target. A rerun refuses an existing tag that
+resolves to another commit. Android validates the built APK package, versionName
+and versionCode with aapt2, and records its source commit, CN region and embedded
+runtime fingerprint in the update metadata. Windows validates CN, win32/x64 and
+the source commit from build-info.json before publication.
+
+Windows CN is currently a manual, unsigned, versionless validation release from
+`personal-windows-build.yml`. Its prereleases do not replace the Android latest
+release feed. Windows Personal automatic updating and independent installation
+identity are not implemented yet; side-by-side installation with official Windows
+Cindy has not been verified.
+
+Android has a separate package but retains the official `cindycn` OAuth callback
+scheme. Side-by-side external OAuth login still requires device verification;
+changing the scheme requires confirming the authentication server's callback
+contract. The daily workflow deliberately stops at a draft PR, without merging
+or publishing unreviewed upstream changes.
 
 ## Patch maintenance rules
 
