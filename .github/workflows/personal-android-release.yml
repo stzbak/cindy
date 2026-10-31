@@ -91,6 +91,7 @@ jobs:
           NODE
 
       - name: Build signed Personal APK
+        id: apk
         env:
           XDT_ANDROID_KEYSTORE_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEYSTORE_PASSWORD_CN }}
           XDT_ANDROID_KEY_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEY_PASSWORD_CN }}
@@ -105,6 +106,7 @@ jobs:
           import path from 'node:path';
           import { execFileSync } from 'node:child_process';
           import { readEmbeddedRuntimeVersionFromApk } from './apps/mobile/scripts/lib/embedded-runtime.mjs';
+          import { assertPersonalAndroidSignature } from './scripts/personal/android-signature.mjs';
 
           const apk = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.apk');
           const metadataPath = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.json');
@@ -118,10 +120,8 @@ jobs:
           if (!aapt2) throw new Error('aapt2 is required for APK validation');
           const signer = path.join(path.dirname(aapt2), 'apksigner');
           const signature = execFileSync(signer, ['verify', '--verbose', '--print-certs', apk], { encoding: 'utf8' });
-          const certificate = signature.match(/Signer #1 certificate SHA-256 digest: ([a-f0-9]+)/i)?.[1]?.toLowerCase();
-          if (certificate !== 'e7e234dfe1541acd2e9926b2198bfaaba2fe5dba842e4b2cee1ae4940c88efb7') {
-            throw new Error('APK signing certificate changed; refusing an incompatible update');
-          }
+          const certificate = assertPersonalAndroidSignature(signature);
+          console.log('Verified stable Personal signing certificate: ' + certificate);
           const badging = execFileSync(aapt2, ['dump', 'badging', apk], { encoding: 'utf8' });
           const identity = badging.match(/^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'/m);
           if (!identity || identity[1] !== process.env.PERSONAL_ANDROID_PACKAGE ||
@@ -149,3 +149,12 @@ jobs:
             ${{ runner.temp }}/android-artifacts/cindy-personal-android.apk
             ${{ runner.temp }}/android-artifacts/cindy-personal-android.json
           if-no-files-found: error
+
+      - name: Preserve compiled APK if release validation fails
+        if: failure() && steps.apk.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-android-validation-failure
+          path: ${{ runner.temp }}/android-artifacts/app-release.apk
+          if-no-files-found: warn
+          retention-days: 3
