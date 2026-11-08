@@ -124,6 +124,23 @@ describe('Bot lifecycle deletion during database hydration', () => {
   });
 });
 
+describe('Windows personal profile', () => {
+  it('does not hydrate companion profiles', async () => {
+    // reset-modules: prove a fresh Windows renderer never installs companion hydration after the platform gate changes.
+    vi.resetModules();
+    const list = vi.fn(async () => [bot]);
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      writable: true,
+      value: { platform: 'win32', localDb: { bots: { list } } },
+    });
+
+    const store = await import('../botStore');
+    await Promise.resolve();
+    expect(list).not.toHaveBeenCalled();
+    expect(store.getBotProfiles()).toEqual([]);
+  });
+});
 
 describe('Bot profile snapshot ownership', () => {
   // #9706 / unit: importing the real store before LocalDbGate must not read a

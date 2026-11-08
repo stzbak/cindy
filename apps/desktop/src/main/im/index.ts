@@ -55,6 +55,7 @@ import { wireIMessageOrchestrator } from './imessage/adapter';
  */
 
 import { TELEGRAM_DEFAULT_BEHAVIOR } from '@cindy/im';
+import { isImBotsEnabled } from '../../shared/personalProfile.js';
 import path from 'node:path';
 
 import { ipcMain, BrowserWindow, dialog, type IpcMainEvent } from 'electron';
@@ -125,6 +126,7 @@ import { bindingStore, executeDetach } from './binding';
 import { IM_DEFAULT_EFFORT_OVERRIDES, IM_DEFAULT_SETTINGS, IM_DEFAULT_SETTINGS_CHANNELS } from '../../shared/imDefaultSettings';
 import { getAuthState } from '../authManager';
 import { getUpdateStatus, isUpdateRelaunchImminent } from '../updateService';
+import { isCompanionsEnabled } from '../../shared/personalProfile';
 
 import { createLogger } from '../logger';
 import { assertTrustedAppRendererEvent } from '../security/trustedAppRenderer';
@@ -253,6 +255,7 @@ const WECOM_CONFIG: ImOrchestratorConfig = {
 };
 
 export function startImOrchestrators(): void {
+  if (!isImBotsEnabled(process.platform)) return;
   wechatCompatibilityPolicy.start();
   if (wired) return;
   wired = true;
@@ -663,7 +666,9 @@ async function initializeImConnection(): Promise<void> {
   activateImAccountBoundary();
   await im.init();
   // 伙伴自有连接跟在设置页那份后面起; 各自失败只记日志。
-  await startBotImConnections();
+  // Personal Windows keeps ordinary IM settings/connections, but never restores
+  // credentials or transports owned by a companion.
+  if (isCompanionsEnabled(process.platform)) await startBotImConnections();
 }
 
 /**
@@ -901,6 +906,7 @@ export async function backfillImDefaultRoutesAtStartup(): Promise<void> {
 }
 
 export function startImConnection(): void {
+  if (!isImBotsEnabled(process.platform)) return;
   if (connectionLifecycle.isStarted()) {
     log.info('startImConnection: already started, skip');
     return;

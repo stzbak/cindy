@@ -47,6 +47,8 @@ export interface ResumeUpdateCheckDeps {
   fetchLatest: () => Promise<unknown>;
   getCurrentRuntimeVersion: () => string | null | undefined;
   getCurrentVersion: () => string | null | undefined;
+  /** Personal Android compares the native build number for full-APK releases. */
+  getCurrentBuildNumber?: () => string | number | null | undefined;
   /**
    * 强更时的唯一 UI 出口(实参是 promptBundleUpdate → 进入模块级阻断态)。
    * 契约:实现必须幂等 —— 本层每次命中强更都会上报,不做去重;
@@ -135,6 +137,7 @@ export function createResumeUpdateChecker(
       const evaluation = evaluateBundleUpdate({
         currentRuntimeVersion: deps.getCurrentRuntimeVersion(),
         currentVersion: deps.getCurrentVersion(),
+        currentBuildNumber: deps.getCurrentBuildNumber?.(),
         latest,
       });
       if (!evaluation.needsUpdate || !evaluation.target) return 'up-to-date';

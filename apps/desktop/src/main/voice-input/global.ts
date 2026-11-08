@@ -31,6 +31,7 @@ import {
   onVoiceInputReady,
   prewarmVoiceInputProvider,
 } from './index.js';
+import { isAuxiliaryWindowPrewarmEnabled } from '../../shared/personalProfile.js';
 import {
   VOICE_INPUT_DICTIONARY_LEARNING_TRACK_TIMEOUT_MS,
 } from '../../shared/voiceInputDictionaryLearning.js';
@@ -483,6 +484,7 @@ let overlayPrewarmSkippedUntilReady = false;
  * the existing cold path.
  */
 export function prewarmGlobalVoiceInputOverlay(): void {
+  if (!isAuxiliaryWindowPrewarmEnabled(process.platform)) return;
   if (!(registeredAccelerator ?? registeredNativeShortcutLabel)) return;
   if (getOverlayWindow()) return;
   const attempt = ++overlayPrewarmAttempt;
@@ -1773,8 +1775,10 @@ async function setVoiceInputGlobalShortcut(
       modifiers: shortcut.modifiers,
       trigger: shortcut.trigger,
     });
-    void prewarmVoiceInputProvider();
-    setTimeout(() => prewarmGlobalVoiceInputOverlay(), 1500);
+    if (isAuxiliaryWindowPrewarmEnabled(process.platform)) {
+      void prewarmVoiceInputProvider();
+      setTimeout(() => prewarmGlobalVoiceInputOverlay(), 1500);
+    }
     return { ok: true };
   }
 
@@ -1848,8 +1852,10 @@ async function setVoiceInputGlobalShortcut(
     registeredNativeShortcutKey = nativeShortcutKey;
     stopNativeShortcutListenerPreservingCapture();
     log.info('Windows native global shortcut registered', { code: shortcut.code });
-    void prewarmVoiceInputProvider();
-    setTimeout(() => prewarmGlobalVoiceInputOverlay(), 1500);
+    if (isAuxiliaryWindowPrewarmEnabled(process.platform)) {
+      void prewarmVoiceInputProvider();
+      setTimeout(() => prewarmGlobalVoiceInputOverlay(), 1500);
+    }
     return { ok: true };
   }
 
@@ -1881,10 +1887,11 @@ async function setVoiceInputGlobalShortcut(
   log.info('global shortcut registered', { accelerator });
   // First-press warmup: read auth.json now so the very first shortcut press
   // does not pay for it on the critical path.
-  void prewarmVoiceInputProvider();
-  // Pre-create only a hidden idle overlay. It preserves the latency win without
-  // letting app activation restore the overlay for normal menu shortcuts.
-  setTimeout(() => prewarmGlobalVoiceInputOverlay(), 1500);
+  if (isAuxiliaryWindowPrewarmEnabled(process.platform)) {
+    void prewarmVoiceInputProvider();
+    // Personal Windows creates this only when the shortcut is actually used.
+    setTimeout(() => prewarmGlobalVoiceInputOverlay(), 1500);
+  }
   return { ok: true };
 }
 
