@@ -71,6 +71,34 @@ export function kotlinVersions(rnVersion, module) {
     .filter(d => d.group === 'org.jetbrains.kotlin' && d.module === 'kotlin-gradle-plugin')
     .map(d => d.version.requires)])];
 }
+export function builderTools(sources) {
+  return sources.flatMap(source => [...source.matchAll(/getBinFromUrl[^"]+"(nsis(?:-resources)?)", *"([0-9.]+)", *"([A-Za-z0-9+/=]+)"/g)]
+    .map(([, name, version, checksum]) => ({ name, version, checksum })));
+}
+export function builderArchives(temp) {
+  const sources = ['nsisUtil.js', 'NsisTarget.js'].map(file =>
+    fs.readFileSync('node_modules/app-builder-lib/out/targets/nsis/' + file, 'utf8'));
+  const tools = builderTools(sources);
+  if (tools.length !== 2 || new Set(tools.map(tool => tool.name)).size !== 2) throw new Error('Cannot resolve pinned NSIS tools');
+  const files = new Map();
+  for (const tool of tools) {
+    const tag = tool.name + '-' + tool.version;
+    const name = tag + '.7z';
+    const repo = 'electron-userland/electron-builder-binaries';
+    const entry = asset(release(repo, tag), name);
+    const bytes = api('repos/' + repo + '/releases/assets/' + entry.id, true);
+    // Legacy NSIS releases have no GitHub SHA256 digest. Preserve the stronger
+    // SHA512 pinned in the installed builder package, also rechecked by builder.
+    if (bytes.length !== entry.size || createHash('sha512').update(bytes).digest('base64') !== tool.checksum) {
+      throw new Error('Pinned NSIS SHA512 mismatch');
+    }
+    const dest = path.join(temp, name);
+    fs.writeFileSync(dest, bytes);
+    files.set('/' + tag + '/' + name, dest);
+    console.log('Verified pinned official asset: ' + name);
+  }
+  return files;
+}
 export async function kotlinCompiler() {
   const catalog = fs.readFileSync('node_modules/@react-native/gradle-plugin/gradle/libs.versions.toml', 'utf8');
   const agp = catalog.match(/^agp = "([0-9.]+)"/m)?.[1];
@@ -108,19 +136,22 @@ async function windows() {
   let server;
   try {
     download('electron/electron', asset(release('electron/electron', 'v' + pkg.version), name), sums[name], archive);
+    const builderFiles = builderArchives(temp);
     // Loopback-only mirror serves verified bytes and their original pinned sums.
     // Both Electron install and Forge retain their normal checksum validation.
     const prefix = '/v' + pkg.version + '/';
     const checksums = Object.entries(sums).map(([file, hash]) => hash + ' *' + file).join(String.fromCharCode(10));
     server = http.createServer((req, res) => {
-      if (req.url === prefix + name) {
-        res.setHeader('Content-Length', fs.statSync(archive).size);
-        fs.createReadStream(archive).pipe(res);
+      const file = req.url === prefix + name ? archive : builderFiles.get(req.url);
+      if (file) {
+        res.setHeader('Content-Length', fs.statSync(file).size);
+        fs.createReadStream(file).pipe(res);
       } else if (req.url === prefix + 'SHASUMS256.txt') { res.end(checksums); }
       else { res.writeHead(404); res.end(); }
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const env = { ...process.env, ELECTRON_MIRROR: 'http://127.0.0.1:' + server.address().port + '/' };
+    env.ELECTRON_BUILDER_BINARIES_MIRROR = env.ELECTRON_MIRROR;
     delete env.GH_TOKEN;
     await new Promise((resolve, reject) => {
       const child = spawn('cmd.exe', ['/d', '/s', '/c', 'pnpm release:package -- --platform win32 --arch x64 --region cn --version ' + appVersion + ' --no-sign'], { env, stdio: 'inherit' });
