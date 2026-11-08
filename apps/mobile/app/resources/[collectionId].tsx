@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -20,6 +21,7 @@ import {
 import { Text } from '@/components/AppText';
 import { useTeammateNavigation } from '@/session/useTeammateNavigation';
 import { TEAMMATE_COLLECTION_ID } from '@/session/useTeammateRoster';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { RemoteCompanionAvatar } from '@/components/RemoteCompanionAvatar';
 import { MainWindowActionButton, MainWindowEmptyState, RemoteListSyncingPlaceholder, StatusDot } from '@/components/MobilePrimitives';
 import { mobileInteractionStyles } from '@/components/mobileInteractionStyles';
@@ -51,7 +53,8 @@ export default function RemoteCollectionScreen() {
   const params = useLocalSearchParams<{ collectionId?: string | string[] }>();
   const collectionId = Array.isArray(params.collectionId) ? params.collectionId[0] ?? '' : params.collectionId ?? '';
   if (!isMobileRemoteCollectionSupported(collectionId)) return <Redirect href="/devices" />;
-  if (collectionId === TEAMMATE_COLLECTION_ID) return <LegacyTeammatesHomeRedirect />;
+  if (collectionId === TEAMMATE_COLLECTION_ID) return isCompanionsEnabled(Platform.OS)
+    ? <LegacyTeammatesHomeRedirect /> : <Redirect href="/devices" />;
   return <RemoteCollectionScreenContent />;
 }
 

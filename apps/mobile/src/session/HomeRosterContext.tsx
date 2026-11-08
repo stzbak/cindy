@@ -3,6 +3,8 @@ import { useIsFocused } from 'expo-router';
 import { RemoteSessionStoreSubscriptionGate } from './remoteSessionStore';
 import { useTeammateRoster } from './useTeammateRoster';
 import { useBotGroupRoster } from './useBotGroupRoster';
+import { Platform } from 'react-native';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 const RosterContext = createContext<{
   roster: ReturnType<typeof useTeammateRoster>; groups: ReturnType<typeof useBotGroupRoster>;
@@ -23,7 +25,7 @@ export function HomeRosterStoreProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
-  const enabled = readers.size > 0;
+  const enabled = readers.size > 0 && isCompanionsEnabled(Platform.OS);
   return <ReadersContext.Provider value={setReader}>
     <HomeRosterContent enabled={enabled}>{children}</HomeRosterContent>
   </ReadersContext.Provider>;
@@ -32,6 +34,7 @@ export function HomeRosterStoreProvider({ children }: { children: ReactNode }) {
 /** Visible Homes share one reader; hidden drawers keep data without polling. */
 export function HomeRosterProvider({ children }: { children: ReactNode }) {
   const focused = useIsFocused();
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
   const setReader = useContext(ReadersContext);
   const owner = useId();
   useLayoutEffect(() => {
@@ -41,13 +44,13 @@ export function HomeRosterProvider({ children }: { children: ReactNode }) {
   if (setReader) return children;
   // Standalone surfaces and component previews retain their own reader.
   return <RemoteSessionStoreSubscriptionGate enabled={focused}>
-    <HomeRosterContent enabled={focused}>{children}</HomeRosterContent>
+    <HomeRosterContent enabled={focused && companionsEnabled}>{children}</HomeRosterContent>
   </RemoteSessionStoreSubscriptionGate>;
 }
 
 function HomeRosterContent({ children, enabled }: { children: ReactNode; enabled: boolean }) {
   const roster = useTeammateRoster(enabled);
-  const groups = useBotGroupRoster(roster.groupTargets, enabled);
+  const groups = useBotGroupRoster(enabled ? roster.groupTargets : [], enabled);
   return <RosterContext.Provider value={{ roster, groups }}>{children}</RosterContext.Provider>;
 }
 export const useHomeRoster = () => useContext(RosterContext);

@@ -52,6 +52,8 @@ interface ControllerLogger {
 }
 
 export interface SidebarTabWindowsControllerDeps {
+  /** Personal profile may opt out of startup and replacement spare windows. */
+  prewarmEnabled?: boolean;
   /** 创建隐藏窗口;cascadeIndex = 当前已指派窗口数,工厂据此层叠位置。 */
   createWindow: (cascadeIndex: number) => BrowserWindow;
   /** 状态变化广播(所有窗口)。 */
@@ -137,6 +139,7 @@ export class SidebarTabWindowsController {
 
   /** 后台预热一扇未指派的隐藏窗口。幂等:已有活着的 spare 时 no-op。 */
   prewarm(): void {
+    if (this.deps.prewarmEnabled === false) return;
     if (this.disposed) return;
     if (this.spare && !this.spare.win.isDestroyed()) return;
     this.spare = this.createSlot();
@@ -663,7 +666,7 @@ export class SidebarTabWindowsController {
   }
 
   private scheduleSpareReplenish(): void {
-    if (this.disposed || this.replenishTimer) return;
+    if (this.deps.prewarmEnabled === false || this.disposed || this.replenishTimer) return;
     this.replenishTimer = setTimeout(() => {
       this.replenishTimer = null;
       this.prewarm();

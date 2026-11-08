@@ -49,6 +49,7 @@ import { nextAskUserVoiceShortcutOrder, registerAskUserVoiceShortcutCard } from 
 import { CreateAgentSendIcon } from './SendButton';
 import { useAnswerComposerExpanded } from './useAnswerComposerExpanded';
 import { useAskUserDictation } from './useAskUserDictation';
+import { isComposerVoiceInputEnabled } from '../../../shared/personalProfile';
 import { parseVoiceQuestionSelection, type VoiceQuestionBridge, type VoiceQuestionTarget } from './voiceQuestionSelection';
 
 const ASK_USER_ANSWER_MAX_HEIGHT_PX = 148;
@@ -238,6 +239,7 @@ function AskUserQuestionForm({
 }: AskUserQuestionPromptProps) {
   const { t } = useTranslation();
   const { requestId, questions } = pending;
+  const composerVoiceInputEnabled = isComposerVoiceInputEnabled(window.electronAPI?.platform ?? '');
   const totalQuestions = questions.length;
   const queueIndex = pendingQuestions?.findIndex((q) => q.requestId === requestId) ?? -1;
   const [referencePreviewOpen, setReferencePreviewOpen] = useState(false);
@@ -325,6 +327,7 @@ function AskUserQuestionForm({
     },
     focus: () => inputRef.current?.focus(),
   }, {
+    enabled: composerVoiceInputEnabled,
     onPermissionRequired: handleVoicePermissionRequired,
   });
   const dictationRef = useRef(dictation);
@@ -624,7 +627,7 @@ function AskUserQuestionForm({
   }, [currentQ]);
 
   const beginVoiceInput = useCallback(() => {
-    if (voiceBridge || currentQ?.answerConstraints?.choices) return;
+    if (!composerVoiceInputEnabled || voiceBridge || currentQ?.answerConstraints?.choices) return;
     if (voiceSubmitRef.current) return;
     const session = dictationRef.current;
     if (session.isBusy) {
@@ -638,7 +641,7 @@ function AskUserQuestionForm({
     }
     inputRef.current?.focus();
     session.start();
-  }, [options.length, showCustomInput, voiceBridge, currentQ]);
+  }, [composerVoiceInputEnabled, options.length, showCustomInput, voiceBridge, currentQ]);
 
   useEffect(() => {
     if (voiceBridge || !showCustomInput || !pendingVoiceStartRef.current) return;
@@ -655,7 +658,7 @@ function AskUserQuestionForm({
   }, [voiceBridge]);
 
   useEffect(() => {
-    if (voiceBridge) return;
+    if (!composerVoiceInputEnabled || voiceBridge) return;
     // Every card hears each press; the owner check lets exactly one act. A
     // minimized card hides its microphone, so it may only stop a running take.
     const shortcutCard = registerAskUserVoiceShortcutCard(voiceShortcutOrder, {
@@ -721,7 +724,7 @@ function AskUserQuestionForm({
       window.removeEventListener('keydown', onKeyDown, true);
       unsubscribe?.();
     };
-  }, [beginVoiceInput, hostVisible, viewerState, voiceBridge, voiceShortcutOrder, voiceShortcutPreferred]);
+  }, [beginVoiceInput, composerVoiceInputEnabled, hostVisible, viewerState, voiceBridge, voiceShortcutOrder, voiceShortcutPreferred]);
 
   // ── Custom input submit (single-select mode) ──
   const handleCustomSubmit = useCallback(() => {
@@ -1004,7 +1007,7 @@ function AskUserQuestionForm({
           >
             <AutoGrowingAnswerTextarea
               textareaRef={inputRef}
-              voice={voiceBridge ? undefined : dictation}
+              voice={composerVoiceInputEnabled && !voiceBridge ? dictation : undefined}
               value={answerValue}
               readOnly={voiceLocked}
               onCompositionStart={markStarted}
@@ -1036,7 +1039,7 @@ function AskUserQuestionForm({
             {/* Voice and submit stay in one cluster: beside a single-line answer,
                 then below the full-width text once it wraps. */}
             <div className={cn('flex items-center justify-end gap-2', composerExpanded ? 'w-full' : 'shrink-0')}>
-              {!voiceBridge && (<AskUserVoiceButton
+              {composerVoiceInputEnabled && !voiceBridge && (<AskUserVoiceButton
                 size="md"
                 label={voiceButtonLabel}
                 busy={dictation.isBusy}
@@ -1105,7 +1108,7 @@ function AskUserQuestionForm({
                   button for screen readers, as the option rows do. */}
               <span className="sr-only">{options.length + 1}</span>
             </button>
-            {!voiceBridge && (<AskUserVoiceButton label={voiceButtonLabel} busy={dictation.isBusy} processing={voiceProcessing || (dictation.isBusy && !dictation.captureReady)} disabled={voiceSubmitting || voiceProcessing} onClick={beginVoiceInput} />)}
+            {composerVoiceInputEnabled && !voiceBridge && (<AskUserVoiceButton label={voiceButtonLabel} busy={dictation.isBusy} processing={voiceProcessing || (dictation.isBusy && !dictation.captureReady)} disabled={voiceSubmitting || voiceProcessing} onClick={beginVoiceInput} />)}
             {/* Pointer shortcut only: the row button above already carries the
                 action and its number for keyboard and screen-reader users. */}
             <div
@@ -1270,7 +1273,7 @@ function AskUserQuestionForm({
           >
             <AutoGrowingAnswerTextarea
               textareaRef={inputRef}
-              voice={voiceBridge ? undefined : dictation}
+              voice={composerVoiceInputEnabled && !voiceBridge ? dictation : undefined}
               value={answerValue}
               readOnly={voiceLocked}
               onCompositionStart={markStarted}
@@ -1296,7 +1299,7 @@ function AskUserQuestionForm({
               )}
             />
             <div className={cn('flex items-center justify-end gap-2', composerExpanded ? 'w-full' : 'shrink-0')}>
-              {!voiceBridge && (<AskUserVoiceButton
+              {composerVoiceInputEnabled && !voiceBridge && (<AskUserVoiceButton
                 size="md"
                 label={voiceButtonLabel}
                 busy={dictation.isBusy}

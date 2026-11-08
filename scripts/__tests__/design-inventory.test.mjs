@@ -164,6 +164,8 @@ test('extractRouterFacts: 真实 router.tsx 的三类去向逐条钉死', () => 
     '/ MainLayout',
     '/ ProtectedRoute',
     '/bots BotsFeatureLayout',
+    '/bots CompanionsRouteGate',
+    '/cc-agent CCAgentFeatureLayout',
     '/login GuestRoute',
     '/skillhub SkillhubFeatureLayout',
   ]);

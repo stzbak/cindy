@@ -63,7 +63,7 @@ function props(groupDevice: boolean): ProjectsSectionProps {
   return {
     unclassified: [], projects: [], dialogues: [], allKnownProjects: [], allProjectKeysForOrder: ['local:known-project'],
     filter: {
-      creators: 'all', creatorOptions: [], toggleCreator: vi.fn(), setCreatorsAll: vi.fn(), setCreatorsNone: vi.fn(),
+      creators: 'all', creatorsEnabled: true, creatorOptions: [], toggleCreator: vi.fn(), setCreatorsAll: vi.fn(), setCreatorsNone: vi.fn(),
       hideAutomations: false, setHideAutomations: vi.fn(),
       groupBy: 'project', groupDialogue: true, groupAutomation: false, groupDevice, sortBy: 'recency',
       pinnedSortBy: 'manual', setPinnedSortBy: vi.fn(),

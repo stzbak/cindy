@@ -22,6 +22,7 @@ import { leaveIncomingShareChooser, incomingShareDestination, incomingShareText,
 import { useTeammateRoster } from '@/session/useTeammateRoster';
 import { teammateResourceRoute } from '@/session/teammateNavigation';
 import { remoteSessionStore } from '@/session/remoteSessionStore';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import type { RemoteSession } from '@/session/types';
 import { serializeNewSessionDeviceOptions, type NewSessionDeviceOption } from '@/session/newSession';
 import { fontWeight, iconSize, iconStroke, lineHeight, radius, spacing, typeScale, useTheme, useThemedStyles, type ThemeColors } from '@/theme';
@@ -48,7 +49,8 @@ export default function IncomingShareScreen() {
   const { accountGeneration } = useAuth();
   const { readDeviceList, openLink, invoke, status, presenceVersion } = useDeviceLink();
   const revoked = useRevokedDevices();
-  const roster = useTeammateRoster(focused && !!batch);
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
+  const roster = useTeammateRoster(companionsEnabled && focused && !!batch);
   const [query, setQuery] = useState('');
   const [directory, setDirectory] = useState<{ owner: number; devices: NewSessionDeviceOption[]; tasks: Task[] } | null>(null);
   const tasks = directory?.owner === accountGeneration ? directory.tasks.filter(item => !revoked.has(item.deviceId)) : [];
@@ -103,11 +105,13 @@ export default function IncomingShareScreen() {
     const matchingTasks = tasks.filter(item => matches(`${item.session.title} ${item.deviceName}`))
       .sort((a, b) => (Date.parse(getSessionListActivityAt(b.session)) || 0) - (Date.parse(getSessionListActivityAt(a.session)) || 0));
     const result: Row[] = [{ key: 'new', kind: 'new' }];
-    if (companions.length || !needle) result.push({ key: 'companions', kind: 'heading', label: t('composer.incomingShare.companions') });
-    if (companions.length) result.push({ key: 'companion-strip', kind: 'companions', items: companions });
-    if (roster.loading) result.push({ key: 'companions-loading', kind: 'status', loading: true });
-    else if (!companions.length && !needle) result.push({ key: 'companions-empty', kind: 'status', label: t('composer.incomingShare.noCompanions') });
-    if (roster.error) result.push({ key: 'companions-retry', kind: 'status', retry: 'roster', label: t('composer.incomingShare.retry') });
+    if (companionsEnabled) {
+      if (companions.length || !needle) result.push({ key: 'companions', kind: 'heading', label: t('composer.incomingShare.companions') });
+      if (companions.length) result.push({ key: 'companion-strip', kind: 'companions', items: companions });
+      if (roster.loading) result.push({ key: 'companions-loading', kind: 'status', loading: true });
+      else if (!companions.length && !needle) result.push({ key: 'companions-empty', kind: 'status', label: t('composer.incomingShare.noCompanions') });
+      if (roster.error) result.push({ key: 'companions-retry', kind: 'status', retry: 'roster', label: t('composer.incomingShare.retry') });
+    }
     if (matchingTasks.length || !needle) result.push({ key: 'tasks', kind: 'heading', label: t('composer.incomingShare.tasks') });
     for (const item of matchingTasks)
       result.push({ key: `task:${incomingShareDestination(item.deviceId, item.session.id)}`, kind: 'task', item });
@@ -117,7 +121,7 @@ export default function IncomingShareScreen() {
     if (needle && !loading && !roster.loading && !error && !roster.error && !companions.length && !matchingTasks.length)
       result.push({ key: 'no-matches', kind: 'status', label: t('composer.incomingShare.noMatches') });
     return result;
-  }, [needle, i18n.language, t, roster.items, roster.loading, roster.error, tasks, loading, error]);
+  }, [needle, i18n.language, t, companionsEnabled, roster.items, roster.loading, roster.error, tasks, loading, error]);
   const text = batch ? incomingShareText(batch.payloads) : '';
   const files = batch?.payloads.filter(item => item.shareType !== 'text' && item.shareType !== 'url') ?? [];
   const handoffBatchId = useRef<string | null>(null);

@@ -4,14 +4,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({
-  dismissTo: vi.fn(), select: vi.fn(), dispatch: vi.fn(),
+  dismissTo: vi.fn(), select: vi.fn(() => true), dispatch: vi.fn(),
   prevent: false, onRemove: undefined as ((event: { data: { action: object }; repeat: () => void }) => void) | undefined,
   acknowledge: vi.fn(), readDevices: vi.fn(), invoke: vi.fn(async () => [] as any[]),
+  platform: 'ios',
   openLink: vi.fn(async () => undefined), owner: { generation: 1 },
   revoked: new Set<string>(), roster: { items: [] as any[], loading: false, error: null, refresh: vi.fn() },
 }));
 vi.mock('react-native', () => ({
-  Platform: { OS: 'ios' }, StyleSheet: { create: (x: unknown) => x },
+  Platform: { get OS() { return mock.platform; } }, StyleSheet: { create: (x: unknown) => x },
   View: ({ children }: any) => el('div', null, children),
   ScrollView: ({ children }: any) => el('div', null, children),
   KeyboardAvoidingView: ({ children }: any) => el('div', null, children),
@@ -70,6 +71,7 @@ beforeEach(() => {
   mock.acknowledge.mockReset();
   stageIncomingShareBatch([{ value: 'https://example.invalid/shared', shareType: 'url' } as any], mock.acknowledge, 'share-1');
   mock.prevent = false; mock.onRemove = undefined;
+  mock.platform = 'ios';
   container = document.createElement('div'); root = createRoot(container);
 });
 afterEach(async () => { await act(() => root.unmount()); });
@@ -80,7 +82,8 @@ const desktop = (deviceId: string, extra = {}) => ({ deviceId, name: deviceId, b
 // device route params. The real new-task parser then had no selectable computer,
 // leaving its selector and send action disabled. Exercise the production click
 // and destination parser; native widgets/transport are the only UI boundaries.
-it('hands the new-task screen eligible computers instead of an empty route', async () => {
+it.each(['ios', 'android'])('hands the %s new-task screen eligible computers instead of an empty route', async platform => {
+  mock.platform = platform;
   mock.readDevices.mockResolvedValue({ devices: [desktop('first'), desktop('second'),
     desktop('disabled', { remoteControlEnabled: false }), desktop('phone', { platform: 'ios' })] });
   await act(async () => root.render(el(IncomingShareScreen)));

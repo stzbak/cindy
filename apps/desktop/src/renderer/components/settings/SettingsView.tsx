@@ -72,6 +72,7 @@ import { useVoiceSpeakerFilterStatus } from '@/hooks/useVoiceSpeakerFilterStatus
 import { getVoiceInputSettings } from '@/hooks/useVoiceInputSettings';
 import { getAgentIslandEnabled, getAgentIslandLiveActivity, getAgentIslandSoundSettings, isAgentIslandSupported, loadAgentIslandLiveActivitySupport, subscribeAgentIslandSettings } from '@/hooks/useAgentIslandSettings';
 import { useCloudInstanceAccess } from '@/features/cloud-settings/CloudInstanceAccess';
+import { isCompanionsEnabled, isImBotsEnabled } from '../../../shared/personalProfile';
 
 // Keep General available with the route; load other sections only when opened.
 const VoiceInputSection = lazy(() => import('./VoiceInputSection').then(module => ({ default: module.VoiceInputSection })));
@@ -162,6 +163,8 @@ function SettingsViewContent() {
   const managedCloudInstance = window.electronAPI?.hostSettings?.hostOwned === true;
   const menuWidth = outletContext?.sidebarWidth ?? DEFAULT_SETTINGS_MENU_WIDTH;
   const isMac = window.electronAPI?.platform === 'darwin';
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
+  const imBotsEnabled = isImBotsEnabled(window.electronAPI?.platform ?? '');
   const [helpAssistantOpen, setHelpAssistantOpen] = useState(false);
   const workingDir = useSyncExternalStore(
     subscribeToLastWorkingDir,
@@ -188,6 +191,7 @@ function SettingsViewContent() {
 
   const activeTab = useMemo<SettingsTab>(() => {
     const raw = rawTab;
+    if (!imBotsEnabled && ['im-bot', 'feishu-bot', 'slack-bot', 'tina'].includes(raw ?? '')) return 'general';
     // legacy 别名:旧「远端机器」(remote) /「设备互联」(devices) 已并入「远程控制」(remote-control)。
     if (raw === 'remote' || raw === 'devices') return 'remote-control';
     // legacy 别名:旧「飞书机器人」(feishu-bot) /「Slack 机器人」(slack-bot) 已并入「IM 机器人」(im-bot)。
@@ -201,7 +205,7 @@ function SettingsViewContent() {
     // legacy 深链:外观设置原在「通用」、回复动效原在「个性化」,旧 section 深链落到「外观」。
     if (isLegacyAppearanceDeepLink(raw, rawSection)) return 'appearance';
     return isSettingsTab(raw) ? raw : 'general';
-  }, [canAccessBilling, canAccessUsage, isMac, rawSection, rawTab]);
+  }, [canAccessBilling, canAccessUsage, isMac, imBotsEnabled, rawSection, rawTab]);
   const previousTabRef = useRef(activeTab);
   useEffect(() => {
     if (rawTab !== 'task-management') return;
@@ -348,9 +352,10 @@ function SettingsViewContent() {
         (tabId) =>
           (isMac || tabId !== 'agent-island') &&
           (canAccessBilling || tabId !== 'billing') &&
+          (imBotsEnabled || tabId !== 'im-bot') &&
           (canAccessUsage || tabId !== 'usage'),
       ),
-    [canAccessBilling, canAccessUsage, isMac],
+    [canAccessBilling, canAccessUsage, isMac, imBotsEnabled],
   );
   const searchContext = useMemo<SettingsSearchContext>(() => ({
     locale,
@@ -522,13 +527,16 @@ function SettingsViewContent() {
                 </section>
 
                 {/* Section — 伙伴（功能级设置：怎么提醒你 + 带走/接回一个伙伴）。
-                    单个伙伴的性格、记忆、能力与日程仍在 TA 自己的设置页里。 */}
-                <section
-                  id={generalSettings.bots.targetId}
-                  aria-label={t(generalSettings.bots.titleKey)}
-                >
-                  <BotsGlobalSettingsSection />
-                </section>
+                    单个伙伴的性格、记忆、能力与日程仍在 TA 自己的设置页里。
+                    Personal 客户端不展示伙伴入口。 */}
+                {companionsEnabled && (
+                  <section
+                    id={generalSettings.bots.targetId}
+                    aria-label={t(generalSettings.bots.titleKey)}
+                  >
+                    <BotsGlobalSettingsSection />
+                  </section>
+                )}
 
                 {/* Section — Collaboration. */}
                 <section

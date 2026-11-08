@@ -355,6 +355,7 @@ import {
 import type { Effort, PermissionMode } from '@/lib/userPreferences.types';
 import { SessionQuickSendProvider, type SessionQuickSend } from '@/components/chat/SessionQuickSendContext';
 import type { AttachedFile, ComposerBotMention, MentionedResource } from '@/lib/fileTypes';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 import { serializeAttachedFiles } from '@/lib/messageAttachmentPayload';
 import { startReviewOnDevice } from '@/lib/startReviewOnDevice';
 import { cleanupStagedChatAttachmentFiles } from '@/lib/chatAttachmentStageCleanup';
@@ -925,6 +926,7 @@ function CCAgentSessionContent({
   botUnreadBoundaryAt,
   onBotReadThrough,
 }: CCAgentSessionViewProps = {}) {
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const { t } = useTranslation();
   const hasWorkdirMenu = usePluginUiHas('workdir.menu');
   const hasPluginStatusbar = usePluginUiHas('statusbar');
@@ -7085,7 +7087,7 @@ function CCAgentSessionContent({
                         }
                       : undefined
                   }
-                  botMentions={composerBotMentions}
+                  botMentions={companionsEnabled ? composerBotMentions : []}
                   hideRuntimeControls={Boolean(botChatIdentity)}
                 />
                 </div>

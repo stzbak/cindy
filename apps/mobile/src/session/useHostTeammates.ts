@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth/AuthContext';
 import { useDeviceLink } from '@/device-link/DeviceLinkContext';
@@ -10,9 +11,11 @@ import {
   type RemoteResourceHostTarget,
 } from '@/device-link/remoteResources';
 import { BOT_GROUP_TEAMMATES_COLLECTION_ID } from './botGroupRemote';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 /** Reads one computer's visible teammates; the host validates every pick. */
 export function useHostTeammates(host: RemoteResourceHostTarget | null, enabled: boolean, search = '') {
+  const active = enabled && isCompanionsEnabled(Platform.OS);
   const { user, accountGeneration } = useAuth();
   const { invoke, openLink } = useDeviceLink();
   const { i18n } = useTranslation();
@@ -24,7 +27,7 @@ export function useHostTeammates(host: RemoteResourceHostTarget | null, enabled:
     { scope, rows: [], loading: false, failed: false },
   );
   useEffect(() => {
-    if (!enabled || !deviceId) return;
+    if (!active || !deviceId) return;
     let cancelled = false;
     const target = { deviceId, deviceName };
     setState((previous) => ({ scope, rows: previous.scope === scope ? previous.rows : [], loading: true, failed: false }));
@@ -53,7 +56,7 @@ export function useHostTeammates(host: RemoteResourceHostTarget | null, enabled:
     const timer = query ? setTimeout(() => { void load(); }, 200) : undefined;
     if (!query) void load();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [deviceId, deviceName, enabled, i18n.language, invoke, openLink, query, scope, user?.id]);
+  }, [active, deviceId, deviceName, i18n.language, invoke, openLink, query, scope, user?.id]);
   const own = state.scope === scope;
-  return { rows: own ? state.rows : [], loading: own && state.loading, failed: own && state.failed };
+  return { rows: active && own ? state.rows : [], loading: active && own && state.loading, failed: active && own && state.failed };
 }

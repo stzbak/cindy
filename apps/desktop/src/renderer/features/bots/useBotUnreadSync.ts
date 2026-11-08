@@ -4,9 +4,11 @@ import { getBotProfiles, refreshBotProfiles, useBotProfiles } from './botStore';
 import { subscribeBotReadState } from './botReadState';
 import { makerChatStore } from '@/lib/makerChatStore';
 import { startBotGroupSync } from './botGroupStore';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 /** Per-window list mirrors; entering a section is never a read receipt. */
-export function useBotUnreadSync(): void {
+export function useBotUnreadSync(enabled = true): void {
+  const active = enabled && isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const bots = useBotProfiles();
   const owner = getDataOwnerGeneration();
   const running = useSyncExternalStore(makerChatStore.subscribeAll, makerChatStore.getRunningSnapshot, makerChatStore.getRunningSnapshot);
@@ -14,6 +16,7 @@ export function useBotUnreadSync(): void {
   const scheduledRefresh = useRef<(() => void) | null>(null);
   const lastMountedOwner = useRef<typeof owner | null>(null);
   useEffect(() => {
+    if (!active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
       if (!isDataOwnerGenerationCurrent(owner) || timer) return;
@@ -54,16 +57,17 @@ export function useBotUnreadSync(): void {
       subscriptions.forEach(unsubscribe => unsubscribe?.());
       window.removeEventListener('focus', refresh);
     };
-  }, [owner]);
+  }, [active, owner]);
   // Final seals patch an existing message; they need not emit messages:created.
   // They share the 120 ms event window so a seal plus its message is one refresh.
   // Initial entry/account changes still load immediately.
   useEffect(() => {
+    if (!active) return;
     if (lastMountedOwner.current !== owner) {
       lastMountedOwner.current = owner;
       refreshBotProfiles();
     } else {
       scheduledRefresh.current?.();
     }
-  }, [runningBots, owner]);
+  }, [active, runningBots, owner]);
 }

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchLatestRelease, probeBetaChannel } from './fetchLatestRelease';
 
+vi.mock('@/config/personalProfile', () => ({
+  isPersonalAndroidUpdateFeedEnabled: () => false,
+}));
+
 const BASE = 'https://ota.example.com';
 const resp = (status: number, json?: unknown) => ({
   status,
