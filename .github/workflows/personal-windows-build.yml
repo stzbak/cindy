@@ -69,7 +69,9 @@ jobs:
 
       - name: Build unsigned Windows installer
         shell: pwsh
-        run: pnpm release:package -- --platform win32 --arch x64 --region cn --version "$env:PERSONAL_APP_VERSION" --no-sign
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/personal/prefetch-build-tools.mjs windows "$env:PERSONAL_APP_VERSION"
 
       - name: Prepare release assets
         shell: pwsh

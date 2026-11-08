@@ -1,6 +1,7 @@
 // CI-only: fetch pinned official assets through GitHub's asset API when release
 // web downloads fail. Never change pins or accept unchecked bytes.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import http from 'node:http';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -34,6 +35,11 @@ function download(repo, entry, expected, dest) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, bytes);
   console.log('Verified official asset: ' + entry.name);
+  return bytes;
+}
+function publicText(url) {
+  return execFileSync('curl', ['--fail', '--location', '--silent', '--show-error',
+    '--max-time', '60', url], { encoding: 'utf8', timeout: 65_000 }).trim();
 }
 export function gradleCachePath(url, home) {
   const parsed = new URL(url);
@@ -58,6 +64,69 @@ async function gradle() {
     '--max-time', '60', url + '.sha256'], { encoding: 'utf8', timeout: 65_000 }).trim();
   const repo = 'gradle/gradle-distributions';
   download(repo, asset(release(repo, 'v' + version), name), checksum, dest);
+  await kotlinCompiler();
+}
+export async function kotlinCompiler() {
+  const catalog = fs.readFileSync('node_modules/@react-native/gradle-plugin/gradle/libs.versions.toml', 'utf8');
+  const agp = catalog.match(/^agp = "([0-9.]+)"/m)?.[1];
+  const rnVersion = catalog.match(/^kotlin = "([0-9.]+)"/m)?.[1];
+  if (!agp || !rnVersion) throw new Error('Cannot resolve upstream Kotlin toolchain');
+  const module = JSON.parse(publicText('https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/' + agp + '/gradle-' + agp + '.module'));
+  const versions = [rnVersion, ...module.variants.flatMap(v => v.dependencies || [])
+    .filter(d => d.group === 'org.jetbrains.kotlin' && d.module === 'kotlin-gradle-plugin')
+    .map(d => d.version.requires)];
+  const version = versions.sort((a, b) => a.localeCompare(b, 'en', { numeric: true })).at(-1);
+  if (!/^[0-9]+[.][0-9]+[.][0-9]+$/.test(version)) throw new Error('Invalid Kotlin version');
+  const name = 'kotlin-compiler-embeddable-' + version + '.jar';
+  const sha1 = publicText('https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/' + version + '/' + name + '.sha1');
+  if (!/^[a-f0-9]{40}$/.test(sha1)) throw new Error('Invalid Maven compiler checksum');
+  const entry = asset(release('JetBrains/kotlin', 'v' + version), name);
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'personal-kotlin-'));
+  try {
+    const file = path.join(temp, name);
+    const bytes = download('JetBrains/kotlin', entry, entry.digest?.replace('sha256:', ''), file);
+    if (createHash('sha1').update(bytes).digest('hex') !== sha1) throw new Error('Maven compiler checksum mismatch');
+    const home = process.env.GRADLE_USER_HOME || path.join(os.homedir(), '.gradle');
+    const cache = path.join(home, 'caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable', version, sha1);
+    fs.mkdirSync(cache, { recursive: true });
+    fs.copyFileSync(file, path.join(cache, name));
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+}
+async function windows() {
+  if (process.platform !== 'win32') throw new Error('Windows build requires Windows');
+  const appVersion = process.argv[3];
+  if (!/^[0-9]+[.][0-9]+[.][0-9]+$/.test(appVersion)) throw new Error('Invalid app version');
+  const pkg = JSON.parse(fs.readFileSync('node_modules/electron/package.json', 'utf8'));
+  const sums = JSON.parse(fs.readFileSync('node_modules/electron/checksums.json', 'utf8'));
+  const name = 'electron-v' + pkg.version + '-win32-x64.zip';
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'personal-electron-'));
+  const archive = path.join(temp, name);
+  let server;
+  try {
+    download('electron/electron', asset(release('electron/electron', 'v' + pkg.version), name), sums[name], archive);
+    // Loopback-only mirror serves verified bytes and their original pinned sums.
+    // Both Electron install and Forge retain their normal checksum validation.
+    const prefix = '/v' + pkg.version + '/';
+    const checksums = Object.entries(sums).map(([file, hash]) => hash + ' *' + file).join(String.fromCharCode(10));
+    server = http.createServer((req, res) => {
+      if (req.url === prefix + name) {
+        res.setHeader('Content-Length', fs.statSync(archive).size);
+        fs.createReadStream(archive).pipe(res);
+      } else if (req.url === prefix + 'SHASUMS256.txt') { res.end(checksums); }
+      else { res.writeHead(404); res.end(); }
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const env = { ...process.env, ELECTRON_MIRROR: 'http://127.0.0.1:' + server.address().port + '/' };
+    delete env.GH_TOKEN;
+    await new Promise((resolve, reject) => {
+      const child = spawn('cmd.exe', ['/d', '/s', '/c', 'pnpm release:package -- --platform win32 --arch x64 --region cn --version ' + appVersion + ' --no-sign'], { env, stdio: 'inherit' });
+      child.once('error', reject);
+      child.once('exit', code => code === 0 ? resolve() : reject(new Error('Windows packaging failed: ' + code)));
+    });
+  } finally {
+    if (server?.listening) await new Promise(resolve => server.close(resolve));
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 }
 async function ripgrep() {
   const { readPinnedVersion } = await import('../../tools/ripgrep/update.mjs');
@@ -84,7 +153,7 @@ async function ripgrep() {
   }
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
-  const prepare = { gradle, ripgrep }[process.argv[2]];
-  if (!prepare) throw new Error('Expected gradle or ripgrep');
+  const prepare = { gradle, ripgrep, windows }[process.argv[2]];
+  if (!prepare) throw new Error('Expected gradle, ripgrep or windows');
   await prepare();
 }
