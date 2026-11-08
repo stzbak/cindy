@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { verifyAsset, gradleCachePath, kotlinVersions } from '../prefetch-build-tools.mjs';
+import { verifyAsset, gradleCachePath, kotlinVersions, builderTools } from '../prefetch-build-tools.mjs';
+
+test('builder prefetch reads locked NSIS versions and checksums without selecting unrelated tools', () => {
+  const tools = builderTools(['getBinFromUrl)("nsis", "1.2.3", "YWJj="); getBinFromUrl)("other", "9.9.9", "YWJj=");']);
+  assert.deepEqual(tools, [{ name: 'nsis', version: '1.2.3', checksum: 'YWJj=' }]);
+  assert.deepEqual(builderTools(['unsupported dependency format']), []);
+});
 
 test('included React Native build retains its compiler alongside the AGP compiler', () => {
   const dependency = { group: 'org.jetbrains.kotlin', module: 'kotlin-gradle-plugin', version: { requires: '2.2.10' } };
