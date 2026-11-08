@@ -4,6 +4,9 @@ import { ApiError } from '@/api/client';
 
 const prewarmMobileRealtimeAudio = vi.fn();
 const createProvider = vi.fn();
+const platform = vi.hoisted(() => ({ os: 'ios' }));
+
+vi.mock('react-native', () => ({ Platform: { get OS() { return platform.os; } } }));
 
 vi.mock('@/session/mobileRealtimeAudio', () => ({
   prewarmMobileRealtimeAudio: (...args: unknown[]) => prewarmMobileRealtimeAudio(...args),
@@ -86,8 +89,21 @@ async function settle(): Promise<void> {
 
 describe('mobileVoicePrewarm', () => {
   afterEach(() => {
+    platform.os = 'ios';
     __testing.reset();
     vi.clearAllMocks();
+  });
+
+  it('does not warm native audio or ASR on Android', () => {
+    platform.os = 'android';
+    createCindyCredential.mockReturnValue(CREDENTIAL);
+
+    prewarmMobileVoiceStart('device-1', AUTH);
+
+    expect(prewarmMobileRealtimeAudio).not.toHaveBeenCalled();
+    expect(createCindyCredential).not.toHaveBeenCalled();
+    expect(createProvider).not.toHaveBeenCalled();
+    expect(__testing.hasPending()).toBe(false);
   });
 
   it('starts the ASR connect at prewarm and hands the in-flight connection to the claiming run', async () => {

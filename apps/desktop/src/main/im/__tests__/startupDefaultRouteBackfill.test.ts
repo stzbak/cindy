@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // from the existing pure lifecycle tests. The module is imported only once.
 const h = vi.hoisted(() => ({
   events: [] as string[],
+  enabled: true,
   started: false,
   relaunching: false,
   db: { owner: 'fake-startup-owner' },
@@ -16,6 +17,7 @@ const h = vi.hoisted(() => ({
   backfill: vi.fn(),
 }));
 
+vi.mock('../../../shared/personalProfile', () => ({ isImBotsEnabled: () => h.enabled, isCompanionsEnabled: () => true }));
 vi.mock('../../localDb/client/current', () => ({ getDbClient: () => h.db }));
 vi.mock('../../maker-ipc/sessionRuntimeControl.js', () => ({}));
 vi.mock('../host', () => ({}));
@@ -52,9 +54,10 @@ vi.mock('../../logger', () => ({
 vi.mock('../../security/trustedAppRenderer', () => ({}));
 vi.mock('../wechat/channelSettings', () => ({}));
 
-import { startImConnection } from '../index';
+import { startImConnection, startImOrchestrators } from '../index';
 
 beforeEach(() => {
+  h.enabled = true;
   h.events.length = 0;
   h.started = false;
   h.relaunching = false;
@@ -65,6 +68,17 @@ beforeEach(() => {
 });
 
 describe('IM startup legacy route backfill', () => {
+  // Unit: disabled Personal IM must survive repeated DB/renderer-ready callbacks.
+  // Existing startup cases only cover enabled channels; no real transports are used.
+  it('does not wire channels, migrate settings or connect when IM bots are disabled', () => {
+    h.enabled = false;
+    startImOrchestrators();
+    startImConnection();
+    startImConnection();
+    expect(h.events).toEqual([]);
+    expect(h.backfill).not.toHaveBeenCalled();
+  });
+
   it('starts backfill with current channel config and DB before connecting, without waiting for it', async () => {
     startImConnection();
     expect(h.events).toEqual(['backfill', 'connect']);

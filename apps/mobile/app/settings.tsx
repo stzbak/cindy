@@ -46,6 +46,7 @@ import {
   simpleScrollScreenSafeAreaEdges,
   usesNativePullDownMenu,
 } from '@/platform/chrome';
+import { isCompanionsEnabled, isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
 import {
   APP_BINARY_VERSION,
   AUTH_API_BASE_URL,
@@ -218,7 +219,8 @@ export default function SettingsScreen() {
   // 而热更不改原生包,若读 expoConfig 会在热更后回退成打热更时主仓 app.json 的旧值。
   // APP_BINARY_VERSION 优先取原生层、热更后不漂移(与 mobileTapdb / env 上报同口径)。
   const appVersion = APP_BINARY_VERSION || '0.0.0';
-  const updatesEnabled = Updates.isEnabled;
+  const personalApkUpdates = isPersonalAndroidUpdateFeedEnabled(Platform.OS);
+  const updatesEnabled = Updates.isEnabled && !personalApkUpdates;
   // 当前运行的 OTA bundle 信息:检查更新时判断应急启动;版本细节展示在二级页「开发者」。
   const { currentlyRunning } = useUpdates();
   const updateChannel = useUpdateChannelGate(IS_OTA_SELFHOST);
@@ -405,6 +407,7 @@ export default function SettingsScreen() {
     checkBundleUpdate,
     currentlyRunning.isEmergencyLaunch,
     t,
+    personalApkUpdates,
     updateChannel.channel,
     updateCheckEnabled,
     updatesEnabled,
@@ -788,7 +791,7 @@ export default function SettingsScreen() {
         {isPushSupported() ? (
           <SettingsGroup
             footer={t('settings.notifications.taskDoneHint')
-              + (isChatBackgroundSupported() ? ` ${t('settings.notifications.backgroundHint')}` : '')
+              + (isCompanionsEnabled(Platform.OS) && isChatBackgroundSupported() ? ` ${t('settings.notifications.backgroundHint')}` : '')
               + (selfHostedRelay ? ` ${t('relay.settings.pushUnavailable')}` : '')}
             messages={[pushMessage ? { text: pushMessage, testID: 'settings.pushMessage' } : null]}
             title={t('settings.notifications.sectionTitle')}
@@ -817,7 +820,7 @@ export default function SettingsScreen() {
                 }).catch(error => setPushMessage(formatRemoteError(error))).finally(() => setPushBusy(false));
               }}
             />
-            {isChatBackgroundSupported() ? <SettingsSwitchRow
+            {isCompanionsEnabled(Platform.OS) && isChatBackgroundSupported() ? <SettingsSwitchRow
               accessibilityLabel={t('settings.notifications.background')}
               label={t('settings.notifications.background')}
               value={chatBackground}

@@ -10,6 +10,7 @@
  * §4–5：renderer 不持有真相）。
  */
 import { useCallback, useSyncExternalStore } from 'react';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 import { seedBotGroupReadState } from './botReadState';
 import { isSecondaryWindow } from '@/lib/secondaryWindow';
 import { discardDraftTree } from '@/lib/composerDraftStore';
@@ -225,7 +226,7 @@ export function startBotGroupSync(): () => void {
 
 export function getBotGroupListSnapshot(): BotGroupListSnapshot {
   ensureOwner();
-  return snapshot;
+  return isCompanionsEnabled(window.electronAPI?.platform ?? '') ? snapshot : EMPTY_SNAPSHOT;
 }
 
 export function subscribeBotGroups(listener: () => void): () => void {

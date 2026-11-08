@@ -2,6 +2,8 @@
 import { i18n } from '@/i18n';
 import { OTA_SERVER_BASE_URL } from '@/config/env';
 import type { UpdateChannel } from '@cindy/maker-shared/update-channel';
+import { isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
+import { fetchPersonalLatestRelease } from './fetchPersonalLatestRelease';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -26,6 +28,9 @@ export async function fetchLatestRelease(
   baseUrl = OTA_SERVER_BASE_URL,
   channel: UpdateChannel = 'release',
 ): Promise<unknown | null> {
+  if (isPersonalAndroidUpdateFeedEnabled(platform)) {
+    return fetchPersonalLatestRelease(timeoutMs);
+  }
   if (!baseUrl) return null; // 非自建变体,无自托管服务
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -66,6 +71,7 @@ export async function probeBetaChannel(
   timeoutMs = DEFAULT_TIMEOUT_MS,
   baseUrl = OTA_SERVER_BASE_URL,
 ): Promise<boolean> {
+  if (isPersonalAndroidUpdateFeedEnabled(platform)) return false;
   if (!baseUrl) return false; // 非自建变体:无自托管服务,beta 不可用
   try {
     const record = await fetchLatestRelease(platform, timeoutMs, baseUrl, 'beta');

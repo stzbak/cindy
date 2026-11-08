@@ -95,7 +95,7 @@ vi.mock('@/features/billing/BillingPage', () => ({ BillingSettingsSection: Stub 
 vi.mock('@/features/bots/BotsGlobalSettingsSection', () => ({ BotsGlobalSettingsSection: Stub }));
 vi.mock('../usage/UsageHistorySection', () => ({ UsageHistorySection: Stub }));
 vi.mock('../ImBotSection', () => ({
-  ImBotSection: Stub,
+  ImBotSection: () => <p>IM bot settings</p>,
   isImBotSettingsGroup: (value: unknown) => value === 'cindy' || value === 'personal',
 }));
 vi.mock('../PiPackagesSection', () => ({
@@ -371,6 +371,18 @@ describe('SettingsView Escape', () => {
     // One initial read plus one on entry; edits still share the same hook.
     expect(getSelection).toHaveBeenCalledTimes(2);
     expect(setSelection).toHaveBeenCalledTimes(2);
+  });
+  // Unit: Windows IM removal includes legacy deep links, absent from Escape cases.
+  // The same production settings component is rendered without Electron.
+  it.each(['im-bot', 'feishu-bot', 'slack-bot', 'tina'])('blocks the Windows %s settings deep link', async (tab) => {
+    vi.stubGlobal('electronAPI', { ...window.electronAPI, platform: 'win32', appVersion: '1.0.0' });
+    await act(async () => { renderSettings('/settings?tab=' + tab); });
+    expect(screen.queryByText('IM bot settings')).toBeNull();
+  });
+
+  it('retains IM settings on other desktop platforms', async () => {
+    await act(async () => { renderSettings('/settings?tab=im-bot'); });
+    expect(screen.getByText('IM bot settings')).toBeTruthy();
   });
 
   it('returns from the Pi extensions page to General before leaving Settings', () => {

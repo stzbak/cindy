@@ -47,6 +47,7 @@ import {
 } from '../bot-autonomy/nightlyLearningRoutine.js';
 import type { NightlyLearningFrequency } from '../../shared/botNightlyLearning.js';
 import { readNightlyLearningState, updateNightlyLearningState } from '../maker-ipc/botNightlyLearningState.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 
 /** Bootstrap supplies live getters without a service -> scheduler -> IPC dependency cycle. */
 export interface RoutineHostDeps {
@@ -166,6 +167,9 @@ function controlPointStopMessage(gate: Extract<GhostControlPointResult, { action
 /** Each standing instruction owns one persistent companion lane. */
 async function execute(scope: string, routine: Routine, run: RoutineRun, signal: AbortSignal, canDispatch: () => boolean) {
   assertScope(scope);
+  // Personal Windows keeps persisted companion history and rule definitions,
+  // but no companion-owned routine may start a turn in this build.
+  if (!isCompanionsEnabled(process.platform)) return { skipped: true };
   const scheduler = getRoutineHost().getScheduler();
   if (!scheduler) return { deferred: true };
   const bot = await getRoutineHost().getBot(routine.botId);
@@ -398,6 +402,8 @@ async function execute(scope: string, routine: Routine, run: RoutineRun, signal:
 
 /** The service exists only for the active local data owner. */
 export async function getRoutineEngine(): Promise<RoutineEngine> {
+  // Also reject lazy callers: hiding the UI alone must not restart the 1s timer.
+  if (!isCompanionsEnabled(process.platform)) throw new Error('COMPANION_RUNTIME_DISABLED');
   if (!app.isPackaged && process.env.XDT_SCHEDULER_PASSIVE === '1') {
     throw new Error('Routines are disabled in a passive development instance');
   }
@@ -448,7 +454,9 @@ export async function getRoutineEngine(): Promise<RoutineEngine> {
       assertScope(scope);
       for (const routine of saved.routines) {
         const profile = profiles.find((row) => row.id === routine.botId);
-        botStates.set(routine.botId, !profile ? 'deleted' : profile.status === 'active' ? 'active' : 'paused');
+        botStates.set(routine.botId, !isCompanionsEnabled(process.platform)
+          ? 'paused'
+          : !profile ? 'deleted' : profile.status === 'active' ? 'active' : 'paused');
       }
       // Recover an interrupted lifecycle before the first queued run can be dispatched.
       for (const routine of saved.routines) {
@@ -567,6 +575,16 @@ async function cleanBackingSchedules(scope: string, ids: string[], remove: boole
     else await scheduler.pause(scheduleId, { internalRoutine: true });
     assertScope(scope);
   }
+}
+
+/** One-shot compatibility cleanup; no engine, timer, rule deletion or model dispatch. */
+export async function pauseDisabledCompanionRoutines(): Promise<void> {
+  if (isCompanionsEnabled(process.platform)) return;
+  const scope = activeOwnerScopeKey();
+  assertScope(scope);
+  const saved = await new RoutineFileStore(ownerScopedUserDataPath('routines')).load();
+  assertScope(scope);
+  await cleanBackingSchedules(scope, saved?.routines.map((routine) => routine.id) ?? [], false);
 }
 
 /** Invoked inside the Bot lifecycle lock, including before permanent profile deletion. */

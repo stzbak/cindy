@@ -4,6 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { TEST_CDN_BASE_URL as CDN_EXTERNAL_BASE_URL } from '../../test/vitest/clientEndpointsFixture';
 
+const personalBuild = vi.hoisted(() => ({ value: 0 }));
+vi.mock('../../shared/personalBuild', () => ({ get PERSONAL_BUILD_NUMBER() { return personalBuild.value; } }));
+
 const originalPlatform = process.platform;
 const originalArch = process.arch;
 let TEST_ROOT: string;
@@ -220,6 +223,7 @@ afterAll(() => {
   fs.rmSync(TEST_ROOT, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 });
 beforeEach(() => {
+  personalBuild.value = 0;
   // Own every startup/background timer so afterEach can cancel it before the
   // app.getPath mock starts pointing at the next test's isolated fixture.
   vi.useFakeTimers();
@@ -347,6 +351,37 @@ describe('agent-facing managed app update check', () => {
     } finally {
       service.stopUpdateService();
     }
+  });
+
+  it('stages same-version Personal rebuilds, supersedes by build identity, and cleans applied builds after restart', async () => {
+    personalBuild.value = 200001;
+    appGetVersion.mockReturnValue('0.1.121');
+    const manifest = (build: number) => ({ app: { version: '0.1.121', personalBuildNumber: build, hotfix: {
+      file: 'https://github.com/stzbak/cindy/releases/download/test/app-' + build + '.zip', sha256: 'a'.repeat(64), size: 6,
+    } } });
+    fetchManifest.mockResolvedValue(manifest(200002));
+    download.mockImplementation(async ({ targetPath }: { targetPath: string }) => {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, 'update');
+      return { path: targetPath, size: 6 };
+    });
+    const service = await freshUpdateService('win32');
+    try {
+      await expect(service.checkForUpdate()).resolves.toBe('ready');
+      fetchManifest.mockResolvedValue(manifest(200003));
+      await expect(service.checkForUpdate()).resolves.toBe('ready');
+      expect(download).toHaveBeenCalledTimes(2);
+      const info = JSON.parse(fs.readFileSync(path.join(TEST_USER_DATA, 'updates', 'patch-info.json'), 'utf8'));
+      expect(info.personalBuildNumber).toBe(200003);
+    } finally { service.stopUpdateService(); }
+    personalBuild.value = 200003;
+    fetchManifest.mockResolvedValue(null);
+    const restarted = await freshUpdateService('win32');
+    restarted.initUpdateService();
+    try {
+      await expect(ipcHandlers.get('update-check-startup')?.()).resolves.toMatchObject({ hasUpdate: false });
+      expect(fs.existsSync(path.join(TEST_USER_DATA, 'updates', 'patch-info.json'))).toBe(false);
+    } finally { restarted.stopUpdateService(); }
   });
 
   it('reports an already staged update while offline or when the manifest changes', async () => {

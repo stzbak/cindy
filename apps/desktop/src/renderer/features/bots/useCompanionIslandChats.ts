@@ -7,6 +7,7 @@ import { markBotRead } from './botReadState';
 import { isRemoteBotUnread, type RemoteBot } from './remoteBotRoster';
 import { markRemoteBotRead } from './useRemoteBots';
 import { createLogger } from '@/lib/logger';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 const log = createLogger('companionIslandChats');
 
@@ -49,22 +50,24 @@ export function useCompanionIslandChats(
   visibleBots: readonly BotProfile[],
   unread: Readonly<Record<string, number>>,
   remoteBots: readonly RemoteBot[],
+  enabled = true,
 ): void {
+  const active = enabled && isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const owner = getDataOwnerGeneration();
-  const signature = JSON.stringify(buildCompanionIslandChats(allBots, visibleBots, unread, remoteBots));
+  const signature = JSON.stringify(active ? buildCompanionIslandChats(allBots, visibleBots, unread, remoteBots) : []);
   // Re-send on reconnect so an unavailable avatar can use the existing thumbnail lookup again.
   const availability = remoteBots.map(bot => `${bot.deviceId}:${bot.id}:${bot.online}`).join('|');
   useEffect(() => {
     const set = window.electronAPI?.agentIsland?.setCompanionChats;
     if (!set) return;
     void set({ dataOwnerId: owner.dataOwnerId, ownerGeneration: owner.generation,
-      chats: JSON.parse(signature) }).catch(error => {
+      chats: active ? JSON.parse(signature) : [] }).catch(error => {
       log.warn('failed to sync companion chats', error);
     });
-  }, [signature, availability, owner]);
-  useEffect(() => window.electronAPI?.agentIsland?.onCompanionChatRead?.((chat, stamp) => {
+  }, [active, signature, availability, owner]);
+  useEffect(() => active ? window.electronAPI?.agentIsland?.onCompanionChatRead?.((chat, stamp) => {
     if (!isDataOwnerPushCurrent(stamp)) return;
     if (chat.deviceId) markRemoteBotRead(chat.deviceId, chat.botId, chat.readThroughAt);
     else markBotRead(chat.botId, chat.readThroughAt);
-  }), []);
+  }) : undefined, [active]);
 }

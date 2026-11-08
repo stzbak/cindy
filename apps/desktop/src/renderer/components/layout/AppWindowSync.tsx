@@ -1,3 +1,4 @@
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 import { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDataOwnerGeneration } from '@/contexts/dataOwnerGeneration';
@@ -11,12 +12,13 @@ import { AppBadgeAttentionSync } from './AppBadgeAttentionSync';
 
 /** Full-app state survives sibling routes; only the main window publishes system attention. */
 function ReadyAppWindowSync() {
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const owner = getDataOwnerGeneration();
   // Register read bootstrap before list effects can discover new identities.
-  useEffect(() => startBotReadStateSync(), [owner]);
-  useBotUnreadSync();
-  useRemoteBotSync();
-  useEffect(() => startBotGroupOutbox(), [owner]);
+  useEffect(() => companionsEnabled ? startBotReadStateSync() : undefined, [owner, companionsEnabled]);
+  useBotUnreadSync(companionsEnabled);
+  useRemoteBotSync(companionsEnabled);
+  useEffect(() => companionsEnabled ? startBotGroupOutbox() : undefined, [owner, companionsEnabled]);
   return isSecondaryWindow() ? null : <AppBadgeAttentionSync />;
 }
 

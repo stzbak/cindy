@@ -6,6 +6,11 @@ const mocks = vi.hoisted(() => ({
   restore: vi.fn<(sessionId: string) => Promise<boolean>>(),
   quotaWait: vi.fn<(scheduleId: string) => Promise<string | null>>(),
   lastUserActionAt: vi.fn<(sessionId: string) => number | null>(),
+  companionsEnabled: true,
+  routineStart: vi.fn(async () => null),
+  routinePause: vi.fn(async () => {}),
+  webhookStart: vi.fn(async () => {}),
+  webhookStop: vi.fn(async () => {}),
   runnerDeps: null as MakerScheduleRunnerDeps | null,
 }));
 
@@ -54,7 +59,9 @@ vi.mock('../script-capability-broker', () => ({ SchedulerScriptCapabilityBroker:
 vi.mock('../notifier', () => ({ DesktopNotifier: class {} }));
 vi.mock('../../im/feishu/notificationOrigin', () => ({ sendFeishuSessionNotification: vi.fn() }));
 vi.mock('../../wecomGroupNotification', () => ({ wecomGroupNotificationService: {} }));
-vi.mock('../../routines/service.js', () => ({ getRoutineEngine: async () => null, stopRoutines: async () => {} }));
+vi.mock('../../routines/service.js', () => ({ getRoutineEngine: mocks.routineStart, pauseDisabledCompanionRoutines: mocks.routinePause, stopRoutines: async () => {} }));
+vi.mock('../../../shared/personalProfile.js', () => ({ isCompanionsEnabled: () => mocks.companionsEnabled }));
+vi.mock('../webhook/runtime.js', () => ({ startScheduleWebhooks: mocks.webhookStart, stopScheduleWebhooks: mocks.webhookStop }));
 
 import { resetScheduler, startScheduler } from '../index';
 
@@ -64,6 +71,23 @@ afterEach(async () => {
   mocks.quotaWait.mockReset();
   mocks.lastUserActionAt.mockReset();
   mocks.runnerDeps = null;
+  mocks.companionsEnabled = true;
+  mocks.routineStart.mockClear(); mocks.routinePause.mockClear();
+  mocks.webhookStart.mockClear(); mocks.webhookStop.mockClear();
+});
+
+// Disabling companion work must preserve ordinary automation and its lifecycle.
+it.each([true, false])('retains webhooks with companion runtime enabled=%s', async enabled => {
+  mocks.companionsEnabled = enabled;
+  const scheduler = await startScheduler({
+    maker: {} as StartSchedulerDeps['maker'], getDb: vi.fn(), getMainWindow: () => null,
+    feishuIm: {} as StartSchedulerDeps['feishuIm'], logger: {},
+  });
+  expect(mocks.routineStart).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  expect(mocks.routinePause).toHaveBeenCalledTimes(enabled ? 0 : 1);
+  expect(mocks.webhookStart).toHaveBeenCalledExactlyOnceWith(scheduler, {});
+  await resetScheduler();
+  expect(mocks.webhookStop).toHaveBeenCalledTimes(1);
 });
 
 describe('scheduler queue wiring', () => {

@@ -3,6 +3,8 @@ import { BOT_GROUP_REMOTE_COLLECTION_ID, BOT_GROUP_REMOTE_RESOURCE_KIND } from '
 import { useRevokedDevices } from '@/device-link/revokedDevicesStore';
 import type { RemoteResourceHostTarget } from '@/device-link/remoteResources';
 import { useRemoteResourceList } from './useRemoteResourceList';
+import { Platform } from 'react-native';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 const NO_TARGETS: RemoteResourceHostTarget[] = [];
 
@@ -10,10 +12,11 @@ const NO_TARGETS: RemoteResourceHostTarget[] = [];
  * Server memberships are primary; advertised computer collections preserve legacy access.
  */
 export function useBotGroupRoster(targets: readonly RemoteResourceHostTarget[], enabled: boolean) {
-  const server = useChatServerRoster(enabled);
+  const active = enabled && isCompanionsEnabled(Platform.OS);
+  const server = useChatServerRoster(active);
   const revoked = useRevokedDevices();
   const hosts = targets.length ? targets : NO_TARGETS;
-  const list = useRemoteResourceList(BOT_GROUP_REMOTE_COLLECTION_ID, hosts, enabled && hosts.length > 0);
+  const list = useRemoteResourceList(BOT_GROUP_REMOTE_COLLECTION_ID, hosts, active && hosts.length > 0);
   // A removed server membership must not reappear through a stale computer cache.
   const seen = new Set(server.serverIds);
   // Old cached rows carry no server/local discriminator. Only a current-epoch
@@ -26,13 +29,13 @@ export function useBotGroupRoster(targets: readonly RemoteResourceHostTarget[], 
     return true;
   });
   return {
-    items: [...server.items, ...legacy],
-    loading: server.loading || (hosts.length > 0 && list.loading),
-    refreshing: server.refreshing || list.refreshing,
-    error: server.error ?? (hosts.length ? list.error : null),
+    items: active ? [...server.items, ...legacy] : [],
+    loading: active && (server.loading || (hosts.length > 0 && list.loading)),
+    refreshing: active && (server.refreshing || list.refreshing),
+    error: active ? server.error ?? (hosts.length ? list.error : null) : null,
     /** Server membership discovery needs no supporting computer. */
-    supported: true,
-    isOnline: (host: RemoteResourceHostTarget) => !host.deviceId || (!revoked.has(host.deviceId) && list.isOnline(host)),
-    refresh: async () => { await Promise.all([server.refresh(), ...(hosts.length ? [list.refresh()] : [])]); },
+    supported: active,
+    isOnline: (host: RemoteResourceHostTarget) => active && (!host.deviceId || (!revoked.has(host.deviceId) && list.isOnline(host))),
+    refresh: async () => { if (active) await Promise.all([server.refresh(), ...(hosts.length ? [list.refresh()] : [])]); },
   };
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { REMOTE_RESOURCE_MANIFEST_CHANNEL, type RemoteResourceManifestResponse } from '@cindy/device-link';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -18,12 +18,14 @@ import { useRemoteResourceList } from './useRemoteResourceList';
 import { createRemoteReadRecovery } from '@/device-link/remoteReadRecovery';
 import { retryRemoteSyncRead, type RemoteSyncRun, useRemoteSyncCoordinator } from '@/device-link/remoteSyncTask';
 import { startBoundedStartupRead } from './mobileHomeStartup';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 const NO_TARGETS: RemoteResourceHostTarget[] = [];
 export const TEAMMATE_COLLECTION_ID = 'teammates';
 
 /** Discover real host capabilities; no provisioning, bot creation, or name-based identity guessing. */
 export function useTeammateRoster(enabled = true) {
+  const activeEnabled = enabled && isCompanionsEnabled(Platform.OS);
   const { user, accountGeneration } = useAuth();
   const { t, i18n } = useTranslation();
   const { readDeviceList, invoke, openLink, connectionEpoch, status, presenceVersion } = useDeviceLink();
@@ -163,7 +165,7 @@ export function useTeammateRoster(enabled = true) {
       groupTargets, error: error ?? (failures.length ? formatRemoteError(failures[0]) : null) }));
   }, [binding, i18n.language, invoke, openLink, readDeviceList, revoked, status, t, user?.id]);
   useEffect(() => {
-    if (!enabled || discovery.binding !== binding || !discovery.ready || discovery.settled
+    if (!activeEnabled || discovery.binding !== binding || !discovery.ready || discovery.settled
       || (status !== 'stopped' && status !== 'connecting')) return;
     const timer = setTimeout(() => {
       setDiscovery((old) => old.binding === binding && !old.settled ? {
@@ -171,10 +173,10 @@ export function useTeammateRoster(enabled = true) {
       } : old);
     }, REMOTE_RESOURCE_STARTUP_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [binding, discovery.binding, discovery.ready, discovery.settled, enabled, status, t]);
-  const requestDiscover = useRemoteSyncCoordinator(discover, JSON.stringify([binding, connectionEpoch, presenceVersion, status, enabled]));
+  }, [activeEnabled, binding, discovery.binding, discovery.ready, discovery.settled, status, t]);
+  const requestDiscover = useRemoteSyncCoordinator(discover, JSON.stringify([binding, connectionEpoch, presenceVersion, status, activeEnabled]));
   useFocusEffect(useCallback(() => {
-    if (!enabled) return;
+    if (!activeEnabled) return;
     const start = () => {
       active.current = AppState.currentState === 'active';
       focusController.current = new AbortController();
@@ -187,23 +189,29 @@ export function useTeammateRoster(enabled = true) {
     start();
     const foreground = AppState.addEventListener('change', (value) => { stop(); if (value === 'active') start(); });
     return () => { stop(); foreground.remove(); };
-  }, [connectionEpoch, discover, enabled, presenceVersion, requestDiscover, status]));
+  }, [activeEnabled, connectionEpoch, discover, presenceVersion, requestDiscover, status]));
   const ready = discovery.binding === binding && discovery.ready;
-  const list = useRemoteResourceList(TEAMMATE_COLLECTION_ID, ready ? discovery.targets : NO_TARGETS, enabled && ready);
+  const list = useRemoteResourceList(TEAMMATE_COLLECTION_ID, ready ? discovery.targets : NO_TARGETS, activeEnabled && ready);
   // Discover refreshes targets too: newly online hosts and newly created rosters are not stranded.
-  const refresh = useCallback(async () => { await requestDiscover({ reason: 'visible' }); await list.refresh(); }, [requestDiscover, list.refresh]);
-  const items = list.items.filter(row => row.item.ref.kind === 'bot' && !revoked.has(row.host.deviceId)
-    && (!ready || discovery.targets.some(host => host.deviceId === row.host.deviceId)));
+  const refresh = useCallback(async () => {
+    if (!activeEnabled) return;
+    await requestDiscover({ reason: 'visible' });
+    await list.refresh();
+  }, [activeEnabled, requestDiscover, list.refresh]);
+  const items = activeEnabled
+    ? list.items.filter(row => row.item.ref.kind === 'bot' && !revoked.has(row.host.deviceId)
+      && (!ready || discovery.targets.some(host => host.deviceId === row.host.deviceId)))
+    : [];
   return { ...list, items,
-    isOnline: (host: RemoteResourceHostTarget) => ready && !revoked.has(host.deviceId) && list.isOnline(host),
-    targets: ready ? discovery.targets : NO_TARGETS,
+    isOnline: (host: RemoteResourceHostTarget) => activeEnabled && ready && !revoked.has(host.deviceId) && list.isOnline(host),
+    targets: activeEnabled && ready ? discovery.targets : NO_TARGETS,
     /** Computers with group chats; empty until discovery ran, and for older desktops. */
     // Stable reference (revocation is applied at discovery and again to the listed rows).
-    groupTargets: ready ? discovery.groupTargets : NO_TARGETS,
-    createTargets: ready && status === 'online' ? discovery.createTargets.filter((host) => !revoked.has(host.deviceId) && list.isOnline(host)) : NO_TARGETS,
-    authoritative: ready && !discovery.loading && !list.loading && !list.syncing && status === 'online' && !discovery.error
+    groupTargets: activeEnabled && ready ? discovery.groupTargets : NO_TARGETS,
+    createTargets: activeEnabled && ready && status === 'online' ? discovery.createTargets.filter((host) => !revoked.has(host.deviceId) && list.isOnline(host)) : NO_TARGETS,
+    authoritative: activeEnabled && ready && !discovery.loading && !list.loading && !list.syncing && status === 'online' && !discovery.error
       && (!discovery.targets.length || (!list.error && discovery.targets.every(list.isOnline))),
-    loading: !ready || !discovery.settled || list.loading,
-    refreshing: list.refreshing,
-    error: ready ? discovery.error ?? (discovery.targets.length ? list.error : null) : null, refresh };
+    loading: activeEnabled && (!ready || !discovery.settled || list.loading),
+    refreshing: activeEnabled && list.refreshing,
+    error: activeEnabled && ready ? discovery.error ?? (discovery.targets.length ? list.error : null) : null, refresh };
 }

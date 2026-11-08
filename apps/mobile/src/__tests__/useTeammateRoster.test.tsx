@@ -3,13 +3,13 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
-  auth: { user: { id: 'owner' }, accountGeneration: 1 }, revoked: new Set<string>(),
+  auth: { user: { id: 'owner' }, accountGeneration: 1 }, revoked: new Set<string>(), platform: { os: 'ios' },
   snapshot: vi.fn(),
   translation: { t: (key: string) => key, i18n: { language: 'en' } },
   link: { status: 'online', connectionEpoch: 1, presenceVersion: 1, invoke: vi.fn(), openLink: vi.fn(), readDeviceList: vi.fn() },
   list: { items: [] as import('@/device-link/remoteResources').HostedRemoteCollectionItem[], loading: false, refreshing: false, error: null, isOnline: vi.fn(() => true), refresh: vi.fn() },
 }));
-vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } }));
+vi.mock('react-native', () => ({ Platform: { get OS() { return h.platform.os; } }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } }));
 vi.mock('expo-router', async () => { const { useEffect } = await import('react'); return { useFocusEffect: (effect: any) => useEffect(effect, [effect]) }; });
 vi.mock('@/i18n', () => ({ i18n: { t: (key: string) => key } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => h.translation }));
@@ -28,13 +28,27 @@ let result: ReturnType<typeof useTeammateRoster>;
 function Probe() { result = useTeammateRoster(); return null; }
 async function render() { root ??= createRoot(document.createElement('div')); await act(async () => root!.render(createElement(Probe))); }
 beforeEach(() => {
-  vi.clearAllMocks(); h.list.items = []; h.revoked.clear(); h.link.openLink.mockResolvedValue(undefined); h.link.status = 'online'; h.link.connectionEpoch = 1; h.auth.accountGeneration = 1;
+  vi.clearAllMocks(); h.list.items = []; h.revoked.clear(); h.platform.os = 'ios'; h.link.openLink.mockResolvedValue(undefined); h.link.status = 'online'; h.link.connectionEpoch = 1; h.auth.accountGeneration = 1;
   h.list.isOnline.mockReturnValue(true);
   h.snapshot.mockResolvedValue({ home: [], items: {}, read: {} });
   h.link.readDeviceList.mockResolvedValue({ devices: ['old', 'new'].map(deviceId => ({ device: { deviceId, name: deviceId }, canOpen: true, state: 'online' })) });
   h.link.invoke.mockImplementation(async (deviceId) => ({ protocolVersion: 1, collections: [{ id: 'teammates', title: 'Teammates', resourceKind: 'bot', placement: 'home-scope', ...(deviceId === 'new' ? { actions: [{ id: 'open-create', label: 'Create' }] } : {}) }] }));
 });
 afterEach(() => { act(() => root?.unmount()); root = undefined; vi.useRealTimers(); });
+
+it('stays inert on the Android personal profile', async () => {
+  h.platform.os = 'android';
+  await render();
+  expect(h.link.readDeviceList).not.toHaveBeenCalled();
+  expect(h.link.invoke).not.toHaveBeenCalled();
+  expect(result.items).toEqual([]);
+  expect(result.targets).toEqual([]);
+  expect(result.loading).toBe(false);
+  await result.refresh();
+  expect(h.link.readDeviceList).not.toHaveBeenCalled();
+  expect(h.link.invoke).not.toHaveBeenCalled();
+});
+
 it('offers only real online hosts advertising create, including a host with an empty roster', async () => {
   await render();
   expect(result.targets.map(host => host.deviceId)).toEqual(['old', 'new']);

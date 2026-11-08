@@ -1,0 +1,160 @@
+name: personal-android-release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-android-release
+  cancel-in-progress: false
+
+env:
+  XDT_SKIP_AGENT_BIN_INSTALL: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  NODE_OPTIONS: '--max-old-space-size=8192'
+  PERSONAL_ANDROID_PACKAGE: 'com.stzbak.cindy'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout Personal branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Personal release identity
+        run: |
+          version="${{ inputs.version }}"
+          version_code="${{ inputs.build_number }}"
+          printf 'PERSONAL_APP_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+          printf 'PERSONAL_ANDROID_VERSION_CODE=%s\n' "$version_code" >> "$GITHUB_ENV"
+          node - "$version" <<'NODE'
+          const fs = require('fs');
+          const path = 'apps/mobile/app.json';
+          const app = JSON.parse(fs.readFileSync(path, 'utf8'));
+          app.expo.version = process.argv[2];
+          fs.writeFileSync(path, JSON.stringify(app, null, 2) + '\n');
+          NODE
+
+      - name: Materialize Android signing files
+        env:
+          PERSONAL_MOBILE_CONFIG_JSON: ${{ secrets.PERSONAL_MOBILE_CONFIG_JSON }}
+          PERSONAL_ANDROID_KEYSTORE_BASE64: ${{ secrets.PERSONAL_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const raw = process.env.PERSONAL_MOBILE_CONFIG_JSON;
+          const encodedKeystore = process.env.PERSONAL_ANDROID_KEYSTORE_BASE64;
+          if (!raw) throw new Error('Missing repository secret PERSONAL_MOBILE_CONFIG_JSON');
+          if (!encodedKeystore) throw new Error('Missing repository secret PERSONAL_ANDROID_KEYSTORE_BASE64');
+          const config = JSON.parse(raw);
+          if (!config.cn || !config.cn.androidSigning) throw new Error('Android CN signing config is incomplete');
+          config.cn.androidPackage = process.env.PERSONAL_ANDROID_PACKAGE;
+          const keystorePath = path.join(process.env.RUNNER_TEMP, 'personal-android.keystore');
+          config.cn.androidSigning.keystorePath = keystorePath;
+          fs.writeFileSync('apps/mobile/scripts/self-host-regions.json', JSON.stringify(config, null, 2) + '\n');
+          fs.writeFileSync(keystorePath, Buffer.from(encodedKeystore, 'base64'), { mode: 0o600 });
+          NODE
+
+      - name: Build signed Personal APK
+        id: apk
+        env:
+          XDT_ANDROID_KEYSTORE_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEYSTORE_PASSWORD_CN }}
+          XDT_ANDROID_KEY_PASSWORD_CN: ${{ secrets.XDT_ANDROID_KEY_PASSWORD_CN }}
+        run: |
+          pnpm mobile:build:android -- --region cn --execute --skip-git-gate --artifacts apk --version-code "$PERSONAL_ANDROID_VERSION_CODE" --out "$RUNNER_TEMP/android-artifacts"
+
+      - name: Prepare release assets
+        run: |
+          cp "$RUNNER_TEMP/android-artifacts/app-release.apk" "$RUNNER_TEMP/android-artifacts/cindy-personal-android.apk"
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { execFileSync } from 'node:child_process';
+          import { readEmbeddedRuntimeVersionFromApk } from './apps/mobile/scripts/lib/embedded-runtime.mjs';
+          import { assertPersonalAndroidSignature } from './scripts/personal/android-signature.mjs';
+
+          const apk = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.apk');
+          const metadataPath = path.join(process.env.RUNNER_TEMP, 'android-artifacts', 'cindy-personal-android.json');
+          const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          if (sourceCommit !== process.env.GITHUB_SHA) throw new Error('Android source commit mismatch');
+          const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+          if (!sdk) throw new Error('Android SDK path is required for APK validation');
+          const toolsDir = path.join(sdk, 'build-tools');
+          const aapt2 = fs.readdirSync(toolsDir).sort().reverse()
+            .map(version => path.join(toolsDir, version, 'aapt2')).find(file => fs.existsSync(file));
+          if (!aapt2) throw new Error('aapt2 is required for APK validation');
+          const signer = path.join(path.dirname(aapt2), 'apksigner');
+          const signature = execFileSync(signer, ['verify', '--verbose', '--print-certs', apk], { encoding: 'utf8' });
+          const certificate = assertPersonalAndroidSignature(signature);
+          console.log('Verified stable Personal signing certificate: ' + certificate);
+          const badging = execFileSync(aapt2, ['dump', 'badging', apk], { encoding: 'utf8' });
+          const identity = badging.match(/^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'/m);
+          if (!identity || identity[1] !== process.env.PERSONAL_ANDROID_PACKAGE ||
+              identity[2] !== process.env.PERSONAL_ANDROID_VERSION_CODE || identity[3] !== process.env.PERSONAL_APP_VERSION) {
+            throw new Error('APK package/version does not match the Personal release');
+          }
+          const metadata = {
+            sourceCommit,
+            region: 'cn',
+            packageName: identity[1],
+            version: process.env.PERSONAL_APP_VERSION,
+            buildNumber: Number(process.env.PERSONAL_ANDROID_VERSION_CODE),
+            runtimeVersion: readEmbeddedRuntimeVersionFromApk(apk),
+            releaseNotes: 'Personal Android build ' + process.env.GITHUB_SHA.slice(0, 12),
+          };
+          fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
+          NODE
+          sha256sum "$RUNNER_TEMP/android-artifacts/cindy-personal-android.apk" "$RUNNER_TEMP/android-artifacts/cindy-personal-android.json" > "$RUNNER_TEMP/android-artifacts/SHA256SUMS"
+
+      - name: Upload validated Android release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-android-release
+          path: |
+            ${{ runner.temp }}/android-artifacts/cindy-personal-android.apk
+            ${{ runner.temp }}/android-artifacts/cindy-personal-android.json
+          if-no-files-found: error
+
+      - name: Preserve compiled APK if release validation fails
+        if: failure() && steps.apk.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-android-validation-failure
+          path: ${{ runner.temp }}/android-artifacts/app-release.apk
+          if-no-files-found: warn
+          retention-days: 3

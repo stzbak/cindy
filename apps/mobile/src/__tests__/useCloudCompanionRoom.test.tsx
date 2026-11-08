@@ -10,7 +10,7 @@ vi.mock('@/session/historyDiskStoreExpo', () => ({ createHistoryDiskIO: () => ({
   remove: async (key: string) => { h.disk.delete(key); }, files: async () => [...h.disk.keys()],
 }) }));
 vi.mock('@/config/env', () => ({ getActiveMobileSessionRealm: () => 'global' }));
-vi.mock('react-native', () => ({ AppState: { addEventListener: (_event: string, listener: (state: string) => void) => {
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, AppState: { addEventListener: (_event: string, listener: (state: string) => void) => {
   h.appStateListeners.add(listener);
   return { remove() { h.appStateListeners.delete(listener); } };
 } } }));

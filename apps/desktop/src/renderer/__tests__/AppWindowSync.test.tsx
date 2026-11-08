@@ -20,20 +20,34 @@ vi.mock('@/features/bots/botReadState', () => ({ startBotReadStateSync: () => {
 vi.mock('@/features/bots/botGroupOutbox', () => ({ startBotGroupOutbox: () => {
   state.events.push('outbox:start'); return () => { state.events.push('outbox:stop'); };
 } }));
-vi.mock('@/features/bots/useBotUnreadSync', () => ({ useBotUnreadSync: () => {
-  useEffect(() => { state.events.push('local:start'); return () => { state.events.push('local:stop'); }; }, [state.owner]);
+vi.mock('@/features/bots/useBotUnreadSync', () => ({ useBotUnreadSync: (enabled = true) => {
+  useEffect(() => { if (!enabled) return; state.events.push('local:start'); return () => { state.events.push('local:stop'); }; }, [state.owner, enabled]);
 } }));
-vi.mock('@/features/bots/useRemoteBots', () => ({ useRemoteBotSync: () => {
-  useEffect(() => { state.events.push('remote:start'); return () => { state.events.push('remote:stop'); }; }, [state.owner]);
+vi.mock('@/features/bots/useRemoteBots', () => ({ useRemoteBotSync: (enabled = true) => {
+  useEffect(() => { if (!enabled) return; state.events.push('remote:start'); return () => { state.events.push('remote:stop'); }; }, [state.owner, enabled]);
 } }));
 vi.mock('../components/layout/AppBadgeAttentionSync', () => ({ AppBadgeAttentionSync: () => <span data-testid="system-attention" /> }));
 import { AppWindowSync } from '../components/layout/AppWindowSync';
 
 beforeEach(() => {
+  vi.stubGlobal('electronAPI', { platform: 'darwin' });
   state.owner = { dataOwnerId: 'account-a', generation: 1 };
   state.ready = true; state.secondary = false; state.sidebar = false; state.events = [];
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+// Production profile must retain task attention without any companion workers.
+it('keeps Windows task attention without starting companion sync or outbox', () => {
+  vi.stubGlobal('electronAPI', { platform: 'win32' });
+  const view = render(<AppWindowSync />);
+  expect(view.queryByTestId('system-attention')).not.toBeNull();
+  expect(state.events).toEqual([]);
+  state.owner = { dataOwnerId: 'account-b', generation: 2 };
+  view.rerender(<AppWindowSync />);
+  expect(state.events).toEqual([]);
+  view.unmount();
+  expect(state.events).toEqual([]);
+});
 
 it('starts list/read/outbox mirrors in each full window but publishes system attention only in main', () => {
   const main = render(<AppWindowSync />);

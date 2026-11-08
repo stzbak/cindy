@@ -73,7 +73,8 @@ import { sendFeishuSessionNotification } from '../im/feishu/notificationOrigin';
 import { withScheduleLock } from './scheduleLock';
 import { wecomGroupNotificationService } from '../wecomGroupNotification';
 import { runSchedulerStartup } from './scheduler-startup-lifecycle';
-import { getRoutineEngine, stopRoutines } from '../routines/service.js';
+import { getRoutineEngine, stopRoutines, pauseDisabledCompanionRoutines } from '../routines/service.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 import { startScheduleWebhooks, stopScheduleWebhooks } from './webhook/runtime.js';
 
 export interface StartSchedulerDeps {
@@ -310,7 +311,11 @@ async function startSchedulerInternal(deps: StartSchedulerDeps): Promise<Schedul
   _promptRunner = promptRunner;
   startRewoundSchedulerPromptCleanup({ logger: deps.logger });
   setSilencedRunProbe((runId) => scheduler.isRunSilenced(runId));
-  void getRoutineEngine().catch((error) => deps.logger.warn?.('routine startup failed', { error: String(error) }));
+  // Keep old backing schedules paused without constructing a companion engine/timer.
+  const routineStartup = isCompanionsEnabled(process.platform)
+    ? getRoutineEngine()
+    : pauseDisabledCompanionRoutines();
+  void routineStartup.catch((error) => deps.logger.warn?.('routine startup failed', { error: String(error) }));
   _loader = loader;
   if (!passive) {
     void startScheduleWebhooks(scheduler, deps.logger).catch((error) => {

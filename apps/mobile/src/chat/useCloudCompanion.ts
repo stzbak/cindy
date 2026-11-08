@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import type { ChatActor, ChatSetHomeResult } from './chatServerClient';
 import { useChatClient } from './useChatServer';
@@ -8,6 +8,7 @@ import { cacheCloudHome, patchCachedCloudHome, peekCachedCloudHome, readCachedCl
   remoteResourceCacheRevision, subscribeRemoteResourceCache } from '@/device-link/remoteResourceCache';
 import { mobileDebugLog } from '@/debug/mobileDebugLog';
 import { forgetCloudConversation } from './cloudConversationCache';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 const NO_ACTORS: ChatActor[] = [];
 const NO_CINDY_IDS: string[] = [];
@@ -20,6 +21,7 @@ const NO_NAMES: ReadonlyMap<string, string> = new Map();
  * an older server, a missing chat endpoint or a failed read leaves the feature off (or the last answer).
  */
 export function useCloudCompanionHome(enabled: boolean) {
+  const active = enabled && isCompanionsEnabled(Platform.OS);
   const api = useChatClient();
   const { readDeviceList } = useDeviceLink();
   useSyncExternalStore(subscribeRemoteResourceCache, remoteResourceCacheRevision);
@@ -29,7 +31,7 @@ export function useCloudCompanionHome(enabled: boolean) {
   const generation = useRef(0);
   useEffect(() => { if (api.enabled) void readCachedCloudHome(api.userId, api.realm); }, [api]);
   const refresh = useCallback(async () => {
-    if (!enabled || !api.enabled) return;
+    if (!active || !api.enabled) return;
     const run = ++generation.current;
     const current = () => run === generation.current && api.current();
     try {
@@ -64,19 +66,20 @@ export function useCloudCompanionHome(enabled: boolean) {
       mobileDebugLog('warn', 'recovery', 'companion-roster-refresh', { source: 'cloud', code, status: (error as { status?: number })?.status });
       setFailure({ owner: api.owner, error: code });
     }
-  }, [api, enabled, readDeviceList]);
+  }, [active, api, readDeviceList]);
   useFocusEffect(useCallback(() => {
-    if (!enabled || !api.enabled) return;
+    if (!active || !api.enabled) return;
     void refresh();
     const foreground = AppState.addEventListener('change', value => { if (value === 'active') void refresh(); });
     return () => { generation.current += 1; foreground.remove(); };
-  }, [api.enabled, enabled, refresh]));
+  }, [active, api.enabled, refresh]));
   // Never move the home before its profile snapshot is in the cloud: the new computer could not
   // build the companion, and the old one would already be demoted (cloud-companions.md).
   const setHome = useCallback(async (actorId: string, homeDeviceId: string, expected: string | null): Promise<ChatSetHomeResult> => {
     if (!(await api.client.hasProfileSnapshot(actorId))) throw new Error('PROFILE_SNAPSHOT_MISSING');
     return api.client.setHome(actorId, homeDeviceId, expected);
   }, [api]);
-  return { supported: cached?.supported === true, actors: cached?.actors ?? NO_ACTORS,
-    cindyIds: cached?.cindyIds ?? NO_CINDY_IDS, deviceNames, error: failure?.owner === api.owner ? failure.error : null, refresh, setHome };
+  return { supported: active && cached?.supported === true, actors: active ? cached?.actors ?? NO_ACTORS : NO_ACTORS,
+    cindyIds: active ? cached?.cindyIds ?? NO_CINDY_IDS : NO_CINDY_IDS, deviceNames: active ? deviceNames : NO_NAMES,
+    error: active && failure?.owner === api.owner ? failure.error : null, refresh, setHome };
 }

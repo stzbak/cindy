@@ -22,6 +22,7 @@ export function useAskCardVoice(input: {
   getText: () => string;
   setText: (value: string, selection?: MobileVoiceSelection) => void;
   getSelection: () => MobileVoiceSelection;
+  enabled?: boolean;
 }): {
   listening: boolean;
   starting: boolean;
@@ -102,6 +103,7 @@ export function useAskCardVoice(input: {
   }, []);
 
   const toggle = useCallback(() => {
+    if (inputRef.current.enabled === false) return;
     // A session that is still closing must finish first; starting a new one
     // now would race the microphone teardown.
     if (stoppingRef.current) return;

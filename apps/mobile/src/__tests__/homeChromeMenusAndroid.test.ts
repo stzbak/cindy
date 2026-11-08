@@ -117,6 +117,20 @@ describe("Android home chrome menus follow the iOS pull-down", () => {
       .toEqual([["filter.projects.all"], ["filter.project:dialogue", "filter.project:p1"]]);
   });
 
+  it("removes companion filters and appearance entries when companions are disabled", () => {
+    const actions = buildHomeDisplayPullDownActions({ ...displayInput, companionsEnabled: false });
+    const ids: string[] = [];
+    const visit = (rows: typeof actions) => rows.forEach(row => {
+      ids.push(row.id);
+      if (row.subactions) visit(row.subactions);
+    });
+    visit(actions);
+    expect(ids).not.toContain("filter.teammates");
+    expect(ids).not.toContain("teammates");
+    expect(ids).toContain("filter.projects");
+    expect(ids).toContain("filter.vendor");
+  });
+
   it("wires the Android header to the same pull-down actions as the iOS header", () => {
     const home = readSource("src/session/HomeSurface.tsx");
     const androidHeader = home.slice(

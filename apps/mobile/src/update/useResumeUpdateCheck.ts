@@ -7,6 +7,7 @@
 
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
+import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
 import {
   APP_BINARY_VERSION,
@@ -14,6 +15,7 @@ import {
   IS_TESTFLIGHT_BUILD,
   REVIEW_MODE,
 } from '@/config/env';
+import { isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
 import { shouldCheckBundleUpdate } from './bundleUpdate';
 import { isGooglePlayInstallation } from './androidInstallSource';
 import { fetchLatestRelease } from './fetchLatestRelease';
@@ -26,6 +28,7 @@ import type { UpdateChannel } from '@cindy/maker-shared/update-channel';
 export function useResumeUpdateCheck(
   channel: UpdateChannel = resolveUpdateChannelForDevice(),
 ): void {
+  const personalApkUpdates = isPersonalAndroidUpdateFeedEnabled(Platform.OS);
   const bundleCheckEnabled = shouldCheckBundleUpdate({
     isSelfHosted: IS_OTA_SELFHOST,
     isReviewMode: REVIEW_MODE,
@@ -39,7 +42,7 @@ export function useResumeUpdateCheck(
 
     let current = true;
     const checker = createResumeUpdateChecker({
-      otaEnabled: IS_OTA_SELFHOST && !__DEV__ && Updates.isEnabled,
+      otaEnabled: !personalApkUpdates && IS_OTA_SELFHOST && !__DEV__ && Updates.isEnabled,
       withOtaClient: (operation) => runSelfHostedOtaRequest(channel, operation),
       checkForUpdateAsync: () => Updates.checkForUpdateAsync(),
       fetchUpdateAsync: () => Updates.fetchUpdateAsync(),
@@ -53,6 +56,9 @@ export function useResumeUpdateCheck(
       getCurrentRuntimeVersion: () => Updates.runtimeVersion,
       // 与 useBundleUpdatePrompt / useForcedUpdateRecheck 同口径:强更比较按原生真值,热更后不漂移。
       getCurrentVersion: () => APP_BINARY_VERSION || null,
+      getCurrentBuildNumber: personalApkUpdates
+        ? () => Application.nativeBuildVersion
+        : undefined,
       onForcedUpdate: promptBundleUpdate,
       onAvailableUpdate: downloadAndroidBundleUpdate,
       now: () => Date.now(),
@@ -66,5 +72,5 @@ export function useResumeUpdateCheck(
       current = false;
       subscription.remove();
     };
-  }, [bundleCheckEnabled, channel]);
+  }, [bundleCheckEnabled, channel, personalApkUpdates]);
 }

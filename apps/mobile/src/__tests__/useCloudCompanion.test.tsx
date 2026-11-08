@@ -15,7 +15,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({ default: {
   getAllKeys: async () => [...h.disk.keys()],
   multiRemove: async (keys: string[]) => { keys.forEach(key => h.disk.delete(key)); },
 } }));
-vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove() {} }) } }));
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, AppState: { addEventListener: () => ({ remove() {} }) } }));
 vi.mock('expo-router', async () => {
   const { useEffect } = await import('react');
   return { useFocusEffect: (effect: () => void | (() => void)) => useEffect(effect, [effect]) };

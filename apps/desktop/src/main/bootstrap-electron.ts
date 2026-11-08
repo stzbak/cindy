@@ -105,6 +105,7 @@ import {
   WINDOW_BACKDROP_MATERIAL_CHANGED_CHANNEL,
 } from '../shared/windowBackdrop.js';
 import { isAllowedBillingMailtoRequest } from '../shared/billing.js';
+import { isCompanionsEnabled, isAuxiliaryWindowPrewarmEnabled, isImBotsEnabled } from '../shared/personalProfile.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { textFilePreviewResult, TEXT_PREVIEW_LIMIT_MB } from './text-file-preview';
@@ -1297,9 +1298,15 @@ async function waitForCurrentAccountProviderModelsReady(): Promise<void> {
 }
 
 // Live getters preserve account/scheduler replacement without loading Main modules at dispatch time.
+const companionFeaturesEnabled = isCompanionsEnabled(process.platform);
 configureRoutineHost({
   deliverResult: deliverRoutineResult, deliveryTargets: listRoutineDeliveryTargets,
-  assertImportedAutomationReady: ensureImportedAutomationReady, prepareImportedAutomation, finishImportedAutomation, recoverImports: recoverCompanionImports,
+  ...(companionFeaturesEnabled ? {
+    assertImportedAutomationReady: ensureImportedAutomationReady,
+    prepareImportedAutomation,
+    finishImportedAutomation,
+    recoverImports: recoverCompanionImports,
+  } : {}),
   getBot: getBotRemoteResourceSource,
   ensureRoutineSession: ensureBotRoutineLaneSession,
   closeRoutineSession: async (sessionId) => {
@@ -1315,7 +1322,6 @@ configureRoutineHost({
   resolvePreRunPlugin: resolveGhostControlPointPlugin,
 });
 // 伙伴自主跟进：跟随例行任务引擎生命周期（引擎每次创建后重新登记 host:sessions 事件源）。
-configureBotAutonomyHost({ getMainWindow: () => mainWindowRef });
 voiceCallCoordinator.configure({
   hostSender: () => {
     const win = mainWindowRef;
@@ -1328,7 +1334,10 @@ voiceCallCoordinator.configure({
   onActiveChange: (active) => setMainWindowBackgroundThrottlingForVoiceCall(active),
   leaseHeld: hasVoiceConversationLease,
 });
-initBotAutonomy();
+if (companionFeaturesEnabled) {
+  configureBotAutonomyHost({ getMainWindow: () => mainWindowRef });
+  initBotAutonomy();
+}
 
 /**
  * Phase 4: 不再用 `_schedulerStarted` flag —— `startScheduler()` 内部以 `_scheduler`
@@ -2437,6 +2446,7 @@ registerRsbWindowIpc({
 // 一个页签。关窗 / 合并 / 崩溃 → notifyTabReturned 交回主窗。状态机见
 // sidebar-tab-window/controller.ts。deps 同样全 lazy(isQuitting 声明在后)。
 const sidebarTabWindowsController = new SidebarTabWindowsController({
+  prewarmEnabled: isAuxiliaryWindowPrewarmEnabled(process.platform),
   createWindow: (cascadeIndex) => createSidebarTabWindow(cascadeIndex),
   // 拖出窗口松手弹窗:窗口的标题栏落在松手点附近,整窗保持在所在显示器可见范围内。
   positionWindow: (win, point) => {
@@ -2517,13 +2527,14 @@ const resourceUsageWindowController = new ResourceUsageWindowController({
   },
 });
 registerResourceUsageWindowIpc({ controller: resourceUsageWindowController });
-const remoteDesktopViewerWindows = new RemoteDesktopViewerWindows((sender) =>
-  isResourceUsageOpenSender({
+const remoteDesktopViewerWindows = new RemoteDesktopViewerWindows(
+  (sender) => isResourceUsageOpenSender({
     sender,
     mainWindow: mainWindowRef,
     senderWindow: BrowserWindow.fromWebContents(sender),
     isSecondaryAppWindow,
   }),
+  isAuxiliaryWindowPrewarmEnabled(process.platform),
 );
 remoteDesktopViewerWindows.register();
 
@@ -4332,6 +4343,9 @@ const createWindow = () => {
     resourceUsagePrewarmTimer = setTimeout(() => {
       resourceUsagePrewarmTimer = null;
       if (isQuitting || mainWindowRef !== mainWindow || mainWindow.isDestroyed()) return;
+      // Owner-selected Personal exception to the upstream auxiliary prewarm baseline.
+      // Cold opens still use the existing ready handshake, security and recovery paths.
+      if (!isAuxiliaryWindowPrewarmEnabled(process.platform)) return;
       resourceUsageWindowController.setLocale(
         currentApplicationMenuLocale ?? getPreferredApplicationLocale(),
       );
@@ -9814,7 +9828,7 @@ app.on('ready', async () => {
       // Bot recovery is owner-scoped and must start only after DbClient
       // takeover. registerMakerIpc also invokes this once its services exist,
       // covering both possible splash/login orderings without duplicate runs.
-      void restoreBotRuntimeForCurrentOwner();
+      if (companionFeaturesEnabled) void restoreBotRuntimeForCurrentOwner();
       void restoreOrcaRemoteWorkersForCurrentOwner();
       startReadyWorktreeMaintenance();
       // An Agent-approved update restarted the app: write its outcome back to the task.
@@ -10186,23 +10200,25 @@ app.on('ready', async () => {
   }
   // IM channels (@cindy/im): 完全独立 workspace 包，跟随 app 生命周期。
   // 注册 IPC handlers 必须在 init 之前——init 失败时 emit 的状态事件依赖 IPC bridge 转发。
-  // IPC handlers 必须无条件注册:用户在 Settings 页保存凭证时, renderer 走这些
-  // channel 跟 main 通信, 跟用户登录态无关。
-  im.registerIpc();
-  // Telegram 个人 bot 行为/人格/群参与配置的 IPC(设置卡数据面),与 im.registerIpc
-  // 同期无条件注册;不能放 host.ts 模块顶层(mock electron 的单测收集期会炸)。
-  registerTelegramBotConfigIpc();
-  // 伙伴自有 IM 机器人连接的 IPC(伙伴设置「消息平台」页数据面), 同期无条件注册。
-  registerBotImConnectionIpc();
-  // 把 telegram transport 注入 device-link 的跨设备上下线执行器。用注入而非
-  // 静态 import: device-link 侧直接引 im/host 会把整个 IM 子系统拽进它的依赖链
-  // (host.ts 模块顶层就调 app.getPath / ipcMain.handle),而 main 进程又禁止运行时
-  // 动态 import(架构不变式 §2)——注入是唯一合规且不破坏单测收集的接法。
-  setTelegramRemoteSource(telegramIm);
-  // 挂业务 orchestrator: 订阅 feishuIm.onMessage / .onCardAction。orchestrator
-  // 必须在 createWindow 前挂好,避免 renderer 起来后第一波 IPC / event 找不到
-  // handler。FeishuBot 的 WS 长连接必须等当前用户 localDb ready 后再启动。
-  startImOrchestrators();
+  // 启用 IM 的平台不按登录态限制 IPC:设置页保存凭证需要这些 channel。
+  // Personal Windows 在平台边界停用整个入口。
+  if (isImBotsEnabled(process.platform)) {
+    im.registerIpc();
+    // Telegram 个人 bot 行为/人格/群参与配置的 IPC(设置卡数据面),与 im.registerIpc
+    // 同期无条件注册;不能放 host.ts 模块顶层(mock electron 的单测收集期会炸)。
+    registerTelegramBotConfigIpc();
+    // 伙伴自有 IM 机器人连接的 IPC(伙伴设置「消息平台」页数据面), 同期无条件注册。
+    registerBotImConnectionIpc();
+    // 把 telegram transport 注入 device-link 的跨设备上下线执行器。用注入而非
+    // 静态 import: device-link 侧直接引 im/host 会把整个 IM 子系统拽进它的依赖链
+    // (host.ts 模块顶层就调 app.getPath / ipcMain.handle),而 main 进程又禁止运行时
+    // 动态 import(架构不变式 §2)——注入是唯一合规且不破坏单测收集的接法。
+    setTelegramRemoteSource(telegramIm);
+    // 挂业务 orchestrator: 订阅 feishuIm.onMessage / .onCardAction。orchestrator
+    // 必须在 createWindow 前挂好,避免 renderer 起来后第一波 IPC / event 找不到
+    // handler。FeishuBot 的 WS 长连接必须等当前用户 localDb ready 后再启动。
+    startImOrchestrators();
+  }
   // Renderer → main 的 "应用真正就绪" 兼容信号。LocalDbGate 在
   // localDb.ensureReady 成功之后调一次。Hook 与 FeishuBot 的权威启动已由
   // localDb onReady 排到 provider readiness 之后；这里同样等待屏障，再为旧时序

@@ -9,11 +9,11 @@ const TARGET_SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
 // Unit, real MCP wire: three harness contexts discover one shared capability.
 // A read must never dispatch an association write; shared guests cannot use it.
-it('exposes GitHub to all harnesses without implicit association', async () => {
+it('preserves GitHub and restricted-surface checks with companions disabled for all harnesses', async () => {
   for (const agentKind of ['codex', 'claude-code', 'pi'] as const) {
     let restricted = false;
     const call = vi.fn(async () => ({ ok: true, state: 'open', head_sha: 'abc' }));
-    const server = createXdtHelperMcpServer({ github: { call }, resolveSurface: async () => restricted ? 'restricted' : 'default' },
+    const server = createXdtHelperMcpServer({ enableCompanionTools: false, github: { call }, resolveSurface: async () => restricted ? 'restricted' : 'default' },
       { agentKind, workingDir: '/fixture', sessionId: 'current' });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: 'github-read-test', version: '1' });
@@ -982,6 +982,32 @@ describe("cindy_helper MCP server", () => {
       }
       const direct = await client.callTool({ name: "start_session_task", arguments: { project_path: '/project', instruction: "do work" } });
       expect(parsePayload(direct)).toMatchObject({ ok: false, errorCode: "CAPABILITY_NOT_AVAILABLE" });
+      expect(callback).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("hides companion commands when the host disables companion tools", async () => {
+    const callback = vi.fn(async () => ({ ok: false as const, errorCode: "UNEXPECTED", message: "must not run" }));
+    const server = createXdtHelperMcpServer({
+      enableCompanionTools: false,
+      resolveSurface: async () => "bot",
+      botMessaging: { messageAgent: callback, checkMessage: callback, sendToUser: callback },
+      botProfiles: { create: callback },
+    }, { agentKind: "codex", workingDir: "/repo", sessionId: "bot-main" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "helper-companion-disabled", version: "0.0.0" });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      const overview = parsePayload(await client.callTool({ name: "list_tools", arguments: {} }));
+      const categories = (overview.categories as Array<{ name: string }>).map((category) => category.name);
+      expect(categories).not.toContain("bots");
+      expect(parsePayload(await client.callTool({ name: "list_tools", arguments: { category: "bots" } })))
+        .toMatchObject({ ok: false, errorCode: "CAPABILITY_NOT_AVAILABLE" });
+      expect(parsePayload(await client.callTool({ name: "call_tool", arguments: { name: "send_to_user", args: {} } })))
+        .toMatchObject({ ok: false, errorCode: "CAPABILITY_NOT_AVAILABLE" });
       expect(callback).not.toHaveBeenCalled();
     } finally {
       await client.close();

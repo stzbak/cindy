@@ -229,7 +229,7 @@ describe('mobileRealtimeAudio', () => {
       .rejects.toThrow('realtime microphone PCM capture');
   });
 
-  it('hides voice UI when an Android build has no native PCM stream', async () => {
+  it('keeps voice UI hidden on Android regardless of native PCM support', async () => {
     const { shouldShowMobileVoiceUi } = await import('@/session/mobileRealtimeAudio');
 
     expect(shouldShowMobileVoiceUi('android')).toBe(false);
@@ -286,7 +286,7 @@ describe('mobileRealtimeAudio', () => {
     __testing.resetNativeBindingForTests();
 
     expect(isMobileRealtimeAudioAvailable()).toBe(true);
-    expect(shouldShowMobileVoiceUi('android')).toBe(true);
+    expect(shouldShowMobileVoiceUi('android')).toBe(false);
 
     vi.spyOn(Date, 'now')
       .mockReturnValueOnce(1_000)

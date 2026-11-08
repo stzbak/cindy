@@ -1,10 +1,11 @@
 import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useAuth } from '@/auth/AuthContext';
 import { useSelfHostedRelay } from '@/device-link/selfHostedRelay';
 import Notifications from './nativeNotifications';
 import { ChatBackgroundBridge } from './ChatBackgroundBridge';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { notificationRecoveryRoute, parseNotificationResponseDeepLink } from './pushRegistrationModel';
 import {
   configureForegroundNotificationBehavior,
@@ -51,6 +52,7 @@ export function PushNotificationsBridge() {
   apiFetchRef.current = auth.apiFetch;
   // 自建中转下不登记 device-link 推送;切回官方中转后按本机开关重新同步一次。
   const selfHostedRelay = useSelfHostedRelay() !== null;
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
 
   useEffect(() => {
     if (!isPushSupported()) return;
@@ -108,7 +110,7 @@ export function PushNotificationsBridge() {
   useEffect(() => {
     if (!isPushSupported()) return;
     const consumeResponse = (response: NotificationResponse): void => {
-      const deepLink = parseNotificationResponseDeepLink(response);
+      const deepLink = parseNotificationResponseDeepLink(response, companionsEnabled);
       if (!deepLink) return;
       const identifier = response.notification.request.identifier;
       const dedupeKey = identifier ? `id:${identifier}` : `deepLink:${deepLink}`;
@@ -138,7 +140,7 @@ export function PushNotificationsBridge() {
       sub.remove();
       appStateSub.remove();
     };
-  }, [flushPendingDeepLink]);
+  }, [companionsEnabled, flushPendingDeepLink]);
 
   // auth 就绪后重放冷启动 / 点击期间暂存的深链。监听本身保持挂载，避免 auth
   // 状态变化重建 effect 时与 last-response 读取发生竞态。

@@ -32,6 +32,7 @@ import {
   ActivityIndicator,
   Linking,
   Image,
+  Platform,
   Pressable,
   type PressableProps,
   ScrollView,
@@ -47,6 +48,7 @@ import { QuestionReferenceText } from '@/session/QuestionReferenceText';
 import { formatRemoteError } from '@/device-link/remoteStatus';
 import { useMobileMakerTransport } from '@/device-link/useMobileMakerTransport';
 import { asyncQuestionNeedsSupplement, formatAsyncQuestionSupplement } from '@cindy/maker-shared/interaction';
+import { isComposerVoiceInputEnabled } from '@/config/personalProfile';
 import { useAskCardVoice } from '@/session/useAskCardVoice';
 import { buildQueuedTextMessage } from '@/session/inputProjection';
 import {
@@ -1024,6 +1026,7 @@ type AskUserQuestionCardProps = {
 function AskCardVoiceButton({ listening, starting, stopping, disabled, onPress }: { listening: boolean; starting: boolean; stopping: boolean; disabled?: boolean; onPress: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  if (!isComposerVoiceInputEnabled(Platform.OS)) return null;
   return (
     <Pressable
       accessibilityLabel={stopping ? t('session.presentation.composer.stop.processing') : listening || starting ? t('session.common.voiceStopRecording') : t('session.screen.voiceStartInput')}
@@ -1079,6 +1082,7 @@ function AskUserQuestionForm({
   answerTextRef.current = customInput;
   const selectionRef = useRef({ start: customInput.length, end: customInput.length });
   const voice = useAskCardVoice({
+    enabled: isComposerVoiceInputEnabled(Platform.OS),
     deviceId,
     getText: () => answerTextRef.current,
     setText: (value, selection) => {

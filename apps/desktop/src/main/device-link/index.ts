@@ -184,6 +184,7 @@ import { getNotificationImageLabel, getSessionNotificationBody } from '../sessio
 import { deviceLinkApiFetch, officialDeviceLinkApiBase, resolveDeviceLinkApiBase } from './deviceLinkApi.js';
 import { activeSelfHostedRelay } from './selfHostedRelayRouting.js';
 import { currentRelayFrameAuth } from './selfHostedRelayFrameAuth.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 import { ensureInvokeLinkReady, invokeWithClosedLinkRecovery, requiresSessionLink } from './linkRecovery';
 import { invalidatePluginOauth } from '../plugin-oauth/runtime.js';
 import {
@@ -2411,6 +2412,7 @@ export function sendMobileSessionNotify(payload: {
   muteExempt?: boolean;
 }): boolean {
   if (!client) return false;
+  if (payload.teammateBotId && !isCompanionsEnabled(process.platform)) return false;
   // 「消息免打扰」任务不推手机。放在这里而不是各调用方:代输入等旁路不经过
   // notification:show-session-event,这里是所有发起方的唯一出口。
   if (!payload.muteExempt && isSessionNotificationsMutedSync(payload.sessionId)) return false;

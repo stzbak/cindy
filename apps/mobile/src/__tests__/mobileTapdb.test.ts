@@ -42,6 +42,18 @@ describe('mobile TapDB analytics', () => {
     expect(initializeTapdb).not.toHaveBeenCalled();
   });
 
+  it('never initializes the official TapDB SDK on Personal Android', async () => {
+    vi.stubEnv('EXPO_PUBLIC_TAPTAP_CLIENT_ID', 'client-id');
+    vi.stubEnv('EXPO_PUBLIC_TAPTAP_CLIENT_TOKEN', 'client-token');
+    const tapdb = await importMobileTapdb({}, 'android');
+
+    await expect(tapdb.initMobileTapdb()).resolves.toEqual({
+      ok: false,
+      reason: 'disabled_by_profile',
+    });
+    expect(initializeTapdb).not.toHaveBeenCalled();
+  });
+
   it('initializes native TapDB with mobile device-login properties', async () => {
     vi.stubEnv('EXPO_PUBLIC_TAPTAP_CLIENT_ID', 'client-id');
     vi.stubEnv('EXPO_PUBLIC_TAPTAP_CLIENT_TOKEN', 'client-token');
@@ -203,14 +215,14 @@ describe('mobile TapDB analytics', () => {
   });
 });
 
-async function importMobileTapdb(extra: Record<string, unknown> = {}) {
+async function importMobileTapdb(extra: Record<string, unknown> = {}, platform = 'ios') {
   vi.doMock('xdt-tapdb', () => ({
     initializeTapdb,
     setTapdbUserId,
     clearTapdbUser: clearNativeTapdbUser,
   }));
   vi.doMock('react-native', () => ({
-    Platform: { OS: 'ios' },
+    Platform: { OS: platform },
   }));
   vi.doMock('expo-constants', () => ({
     default: {

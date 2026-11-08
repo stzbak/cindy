@@ -21,6 +21,7 @@ import { darkColors, lightColors } from '@/theme/tokens';
 
 const voiceStarter = vi.hoisted(() => ({ start: vi.fn() }));
 const theme = vi.hoisted(() => ({ mode: 'light' as 'light' | 'dark' }));
+const platform = vi.hoisted(() => ({ os: 'ios' }));
 vi.mock('@/session/askCardVoiceStart', () => ({ startAskCardDictation: voiceStarter.start }));
 
 const evidence = vi.hoisted(() => ({ openURL: vi.fn() }));
@@ -61,7 +62,7 @@ vi.mock('react-native', async () => {
     if (onTextLayout) textLayouts.set(String(children), onTextLayout);
     return createElement('span', { onClick: onPress, onContextMenu: onLongPress, 'data-testid': testID }, children);
   };
-  return { View: view('div'), Text, Pressable: view('button'), Linking: { openURL: evidence.openURL },
+  return { View: view('div'), Text, Platform: { get OS() { return platform.os; } }, Pressable: view('button'), Linking: { openURL: evidence.openURL },
     ScrollView: view('div'), Image: () => null, ActivityIndicator: () => null,
     useWindowDimensions: () => ({ width: 390, height: 844 }),
     StyleSheet: { create: (s: unknown) => s, hairlineWidth: 1 } };
@@ -110,6 +111,7 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.resetAllMocks();
   theme.mode = 'light';
+  platform.os = 'ios';
   _clearRemotePathVerdictCache();
   evidence.openURL.mockResolvedValue(undefined);
   routeParams.deviceId = 'd1'; routeParams.sessionId = 's1';
@@ -120,6 +122,20 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(() => act(() => root.unmount()));
+
+it('hides the Android question-card microphone while keeping text answers available', async () => {
+  platform.os = 'android';
+  await act(async () => remoteSessionStore.setPendingInteractions('s1', [{ request: {
+    kind: 'ask_user_question', requestId: requestId + ':android',
+    questions: [{ question: 'Answer?' }],
+  } }]));
+  await act(async () => root.render(<AskCardAuthContext.Provider value={{
+    getAccessToken: async () => null, refreshAccessToken: async () => null, apiFetch: async () => null,
+  }}><Harness /></AskCardAuthContext.Provider>));
+
+  expect(host.querySelector('[data-testid="interaction.ask.voice"]')).toBeNull();
+  expect(host.querySelector('[data-testid="interaction.ask.textInput"]')).not.toBeNull();
+});
 
 async function click(id: string) {
   const button = host.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);

@@ -99,24 +99,24 @@ function parseBotGroupDeepLink(deepLink: string): string | null {
  * 从通知 data 中解析深链。只接受桌面端契约内的应用内路径(/sessions/... 与群聊
  * /companions/groups/...),拒绝任意 URL / 其它路径 —— 推送 payload 经第三方通道,按不可信输入对待。
  */
-export function parseNotificationDeepLink(data: unknown): string | null {
+export function parseNotificationDeepLink(data: unknown, companionsEnabled = true): string | null {
   if (!data || typeof data !== 'object') return null;
   const deepLink = (data as Record<string, unknown>).deepLink;
   if (typeof deepLink !== 'string') return null;
   if (deepLink.includes('://') || deepLink.startsWith('//')) return null;
-  if (deepLink.startsWith('/companions/groups/')) return parseBotGroupDeepLink(deepLink);
+  if (deepLink.startsWith('/companions/groups/')) return companionsEnabled ? parseBotGroupDeepLink(deepLink) : null;
   if (!deepLink.startsWith('/sessions/')) return null;
   return deepLink;
 }
 
-function parseNotificationPayloadDeepLink(data: unknown): string | null {
-  const direct = parseNotificationDeepLink(data);
+function parseNotificationPayloadDeepLink(data: unknown, companionsEnabled = true): string | null {
+  const direct = parseNotificationDeepLink(data, companionsEnabled);
   if (direct) return direct;
   if (!data || typeof data !== 'object') return null;
   const record = data as Record<string, unknown>;
   // APNs relay implementations may wrap custom fields under `body` or `data`.
   // Keep the fallback explicit rather than recursively walking untrusted payloads.
-  return parseNotificationDeepLink(record.body) ?? parseNotificationDeepLink(record.data);
+  return parseNotificationDeepLink(record.body, companionsEnabled) ?? parseNotificationDeepLink(record.data, companionsEnabled);
 }
 
 /** Local navigation hint only; neither the push payload nor the device-link protocol changes. */
@@ -139,7 +139,7 @@ export function notificationRecoveryRoute(deepLink: string, responseKey: string)
  * `request.trigger.payload`。两者都支持，避免 relay 的 payload 包装方式
  * 让点击事件静默失效。
  */
-export function parseNotificationResponseDeepLink(response: unknown): string | null {
+export function parseNotificationResponseDeepLink(response: unknown, companionsEnabled = true): string | null {
   if (!response || typeof response !== 'object') return null;
   const notification = (response as Record<string, unknown>).notification;
   if (!notification || typeof notification !== 'object') return null;
@@ -149,10 +149,10 @@ export function parseNotificationResponseDeepLink(response: unknown): string | n
   const content = requestRecord.content;
   if (content && typeof content === 'object') {
     const contentData = (content as Record<string, unknown>).data;
-    const fromContent = parseNotificationPayloadDeepLink(contentData);
+    const fromContent = parseNotificationPayloadDeepLink(contentData, companionsEnabled);
     if (fromContent) return fromContent;
   }
   const trigger = requestRecord.trigger;
   if (!trigger || typeof trigger !== 'object') return null;
-  return parseNotificationPayloadDeepLink((trigger as Record<string, unknown>).payload);
+  return parseNotificationPayloadDeepLink((trigger as Record<string, unknown>).payload, companionsEnabled);
 }

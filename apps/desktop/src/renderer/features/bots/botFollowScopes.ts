@@ -14,6 +14,7 @@ import { useCompanionCloud } from './companionCloudStore';
 import { cloudRemoteBots, withoutShadowedBots } from './companionCloudPresentation';
 import { taskCreatorFilterKey } from './cindyDeviceRoster';
 import { taskBotKey, type RemoteBot } from './remoteBotRoster';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 export { taskBotKey } from './remoteBotRoster';
 import { ensureBotProfilesLoaded, hasLoadedBotProfiles, useBotProfiles, type BotProfile } from './botStore';
 
@@ -45,6 +46,7 @@ const RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000];
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function load(attempt = 0): void {
+  if (!isCompanionsEnabled(window.electronAPI?.platform ?? '')) return;
   const api = window.electronAPI?.localDb?.bots?.workbench?.followScopes;
   if (!api) return;
   if (retryTimer) {
@@ -86,6 +88,7 @@ function ensureOwner(): void {
 }
 
 function subscribe(listener: () => void): () => void {
+  if (!isCompanionsEnabled(window.electronAPI?.platform ?? '')) return () => undefined;
   listeners.add(listener);
   if (!changeSubscribed) {
     // 窗口级订阅,不随任务行挂载 / 卸载反复增删(侧栏滚动时行会频繁重建)。
@@ -104,6 +107,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 function getSnapshot(): readonly BotFollowScope[] {
+  if (!isCompanionsEnabled(window.electronAPI?.platform ?? '')) {
+    scopes = EMPTY;
+    requested = false;
+    return EMPTY;
+  }
   if (!isDataOwnerGenerationCurrent(owner)) {
     ensureOwner();
     queueMicrotask(() => {

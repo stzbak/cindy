@@ -3,7 +3,7 @@ import { randomUUID } from 'expo-crypto';
 import { useAuth } from '@/auth/AuthContext';
 import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { resolveRemoteText, type RemoteResource, type RemoteSessionLinkTarget } from '@cindy/device-link';
@@ -23,14 +23,16 @@ import { fontWeight, useTheme, useThemedStyles, type ThemeColors } from '@/theme
 import { iconSize, lineHeight, spacing, typeScale } from '@/theme/tokens';
 import { goBackGuarded } from '@/utils/backGuard';
 import { CompanionProfileSheet } from '@/session/CompanionProfileSheet';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 function firstParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? '' : value ?? '';
 }
 
 export default function RemoteResourceResolverScreen() {
-  const params = useLocalSearchParams<{ collectionId?: string | string[] }>();
+  const params = useLocalSearchParams<{ collectionId?: string | string[]; resourceKind?: string | string[] }>();
   if (!isMobileRemoteCollectionSupported(firstParam(params.collectionId))) return <Redirect href="/devices" />;
+  if (!isCompanionsEnabled(Platform.OS) && firstParam(params.resourceKind) === 'bot') return <Redirect href="/devices" />;
   return <RemoteResourceResolverScreenContent />;
 }
 

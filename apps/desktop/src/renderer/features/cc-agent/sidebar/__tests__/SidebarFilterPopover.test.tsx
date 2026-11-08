@@ -45,6 +45,7 @@ function makeFilter(overrides: Partial<UseSidebarFilterReturn> = {}): UseSidebar
   return {
     creators: 'all',
     creatorOptions: [],
+    creatorsEnabled: true,
     toggleCreator: vi.fn(),
     setCreatorsAll: vi.fn(),
     setCreatorsNone: vi.fn(),
@@ -201,6 +202,13 @@ describe('sidebar display settings menu', () => {
     ).toEqual(['项目', '对话']);
     expect(filter.groupDevice).toBe(true);
   });
+});
+
+it('hides the creator filter on the Windows personal build', async () => {
+  const filter = makeFilter({ creators: ['[null,"a"]'], creatorsEnabled: false });
+  render(<Preview filter={filter} />);
+  await openSubmenu(/^筛选/);
+  expect(screen.queryByRole('menuitem', { name: /^伙伴/ })).toBeNull();
 });
 
 it('keeps the creator submenu open for multiple selections and exposes an all reset', async () => {

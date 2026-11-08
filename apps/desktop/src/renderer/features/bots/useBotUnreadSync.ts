@@ -4,16 +4,19 @@ import { refreshBotProfiles, useBotProfiles } from './botStore';
 import { subscribeBotReadState } from './botReadState';
 import { makerChatStore } from '@/lib/makerChatStore';
 import { startBotGroupSync } from './botGroupStore';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 /** Per-window list mirrors; entering a section is never a read receipt. */
-export function useBotUnreadSync(): void {
+export function useBotUnreadSync(enabled = true): void {
+  const active = enabled && isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const bots = useBotProfiles();
   const owner = getDataOwnerGeneration();
   const running = useSyncExternalStore(makerChatStore.subscribeAll, makerChatStore.getRunningSnapshot, makerChatStore.getRunningSnapshot);
   const runningBots = bots.flatMap(bot => bot.sessions.filter(session => running.get(session.id)?.isRunning).map(session => session.id)).sort().join(',');
   // Final seals patch an existing message; they need not emit messages:created.
-  useEffect(() => { refreshBotProfiles(); }, [runningBots, owner]);
+  useEffect(() => { if (active) refreshBotProfiles(); }, [active, runningBots, owner]);
   useEffect(() => {
+    if (!active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
       if (!isDataOwnerGenerationCurrent(owner) || timer) return;
@@ -33,8 +36,9 @@ export function useBotUnreadSync(): void {
       subscriptions.forEach(unsubscribe => unsubscribe?.());
       window.removeEventListener('focus', refresh);
     };
-  }, [owner]);
+  }, [active, owner]);
   useEffect(() => {
+    if (!active) return;
     const ids = new Set(bots.flatMap(bot => bot.sessions.map(session => session.id)));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = window.electronAPI?.localDb?.messages?.onCreated?.((payload, stamp) => {
@@ -42,5 +46,5 @@ export function useBotUnreadSync(): void {
       timer = setTimeout(() => { timer = undefined; refreshBotProfiles(); }, 120);
     });
     return () => { if (timer) clearTimeout(timer); unsubscribe?.(); };
-  }, [bots, owner]);
+  }, [active, bots, owner]);
 }

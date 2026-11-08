@@ -118,8 +118,12 @@ type Entry = {
 export class RemoteDesktopViewerWindows {
   private entries = new Set<Entry>();
   private locale: SupportedLocale | null = null;
-  constructor(private readonly isOpenSender: (sender: WebContents) => boolean) {}
+  constructor(
+    private readonly isOpenSender: (sender: WebContents) => boolean,
+    private readonly prewarmEnabled = true,
+  ) {}
   prewarm(): void {
+    if (!this.prewarmEnabled) return;
     // Remote desktop needs a Cindy account, so local and signed-out profiles
     // never keep a spare shell. A persisted cloud intent still prewarms while
     // auth is verifying at startup; a later sign-in opens the first viewer cold.

@@ -6,6 +6,8 @@ import { normalizeTaskTeammateSelection, taskTeammateKey, taskTeammateOptions } 
 import type { RemoteSession } from '@/session/types';
 import type { HostedRemoteCollectionItem } from '@/device-link/remoteResources';
 
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+
 // Unit: missing mobile attribution/old-host lanes. Exercise the real reader and batch
 // transport with one ordinary task, canonical chat, routine and channel; no timers.
 const task = (id: string, patch: Partial<RemoteSession> = {}) => ({ id, title: id, status: 'active', source: 'cc', ...patch } as RemoteSession);
@@ -16,6 +18,18 @@ const bot = (id = 'cindy-default') => ({ ref: { collectionId: 'teammates', kind:
 const input = { deviceId: 'mac', deviceName: 'Mac', scope: 'owner/mac', status: 'all', limit: 200, current: () => true };
 
 describe('mobile teammate task list', () => {
+  it('returns ordinary tasks without companion reads on Android personal', async () => {
+    const invoke = vi.fn();
+    const rows = await readTeammateTasks({
+      ...input,
+      platform: 'android',
+      invoke: invoke as RemoteInvoke,
+      sessions: [task('ordinary'), task('bot', { source: 'bot', companion: { id: 'cindy', role: 'canonical' } })],
+    });
+    expect(rows.map(row => row.id)).toEqual(['ordinary']);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('loads old-host lanes across pages, keeps exact ownership and marks archived delegated tasks', async () => {
     const routine = task('routine', { source: 'bot', companion: { id: 'cindy-default', role: 'routine' } });
     const channel = task('channel', { source: 'bot', companion: { id: 'cindy-default', role: 'channel' } });
