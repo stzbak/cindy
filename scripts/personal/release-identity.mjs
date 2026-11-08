@@ -26,7 +26,11 @@ if (process.env.GH_TOKEN) {
   const latest = JSON.parse(execFileSync('gh', ['api', 'repos/stzbak/cindy/releases/latest'], { encoding: 'utf8' }));
   const asset = latest.assets?.find(asset => asset.name === 'release-identity.json');
   if (asset) {
-    const previous = await read(asset.browser_download_url);
+    // Use the official asset API: release web URLs can return persistent 5xx.
+    const previous = JSON.parse(execFileSync('gh', [
+      'api', 'repos/stzbak/cindy/releases/assets/' + asset.id,
+      '-H', 'Accept: application/octet-stream',
+    ], { encoding: 'utf8' }));
     needed = previous.sourceCommit !== sourceCommit || previous.desktopVersion !== desktop.app.version || previous.androidVersion !== android.version;
   }
 }
