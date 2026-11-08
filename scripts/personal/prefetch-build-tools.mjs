@@ -66,10 +66,24 @@ async function gradle() {
   download(repo, asset(release(repo, 'v' + version), name), checksum, dest);
   await kotlinCompiler();
 }
-export function kotlinVersions(rnVersion, module) {
-  return [...new Set([rnVersion, ...module.variants.flatMap(v => v.dependencies || [])
-    .filter(d => d.group === 'org.jetbrains.kotlin' && d.module === 'kotlin-gradle-plugin')
-    .map(d => d.version.requires)])];
+// Gradle included builds compile with their own Kotlin plugin: React Native's
+// catalog, AGP's requirement and Expo's plugin each pin a different compiler.
+// The literal fallbacks only enumerate candidates; absent releases are skipped
+// and the real Gradle build still fails closed if a compiler is unavailable.
+const KOTLIN_FALLBACKS = ['2.2.0', '2.2.10', '2.2.21'];
+export function kotlinCompilerVersions(texts, module) {
+  const found = new Set(KOTLIN_FALLBACKS);
+  for (const text of texts) {
+    for (const match of text.matchAll(/^[ \t]*kotlin[ \t]*=[ \t]*"([0-9]+[.][0-9]+[.][0-9]+)"|kotlin\("jvm"\)[ \t]*version[ \t]*"([0-9]+[.][0-9]+[.][0-9]+)"/gm)) {
+      found.add(match[1] || match[2]);
+    }
+  }
+  for (const dependency of module.variants.flatMap(v => v.dependencies || [])) {
+    if (dependency.group === 'org.jetbrains.kotlin' && dependency.module === 'kotlin-gradle-plugin') {
+      found.add(dependency.version.requires);
+    }
+  }
+  return [...found].filter(version => /^[0-9]+[.][0-9]+[.][0-9]+$/.test(version)).sort();
 }
 export function builderTools(sources) {
   return sources.flatMap(source => [...source.matchAll(/getBinFromUrl[^"]+"(nsis(?:-resources)?)", *"([0-9.]+)", *"([A-Za-z0-9+/=]+)"/g)]
@@ -100,22 +114,34 @@ export function builderArchives(temp) {
   return files;
 }
 export async function kotlinCompiler() {
-  const catalog = fs.readFileSync('node_modules/@react-native/gradle-plugin/gradle/libs.versions.toml', 'utf8');
+  const catalogPaths = [
+    'node_modules/@react-native/gradle-plugin/gradle/libs.versions.toml',
+    'node_modules/react-native/gradle/libs.versions.toml',
+    'node_modules/expo-modules-autolinking/android/expo-gradle-plugin/build.gradle.kts',
+  ];
+  const catalog = fs.readFileSync(catalogPaths[0], 'utf8');
   const agp = catalog.match(/^agp = "([0-9.]+)"/m)?.[1];
-  const rnVersion = catalog.match(/^kotlin = "([0-9.]+)"/m)?.[1];
-  if (!agp || !rnVersion) throw new Error('Cannot resolve upstream Kotlin toolchain');
+  if (!agp) throw new Error('Cannot resolve upstream Kotlin toolchain');
   const module = JSON.parse(publicText('https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/' + agp + '/gradle-' + agp + '.module'));
-  // React Native's included build and AGP can use different Kotlin compilers.
-  for (const version of kotlinVersions(rnVersion, module)) {
-    if (!/^[0-9]+[.][0-9]+[.][0-9]+$/.test(version)) throw new Error('Invalid Kotlin version');
+  const texts = catalogPaths.filter(file => fs.existsSync(file)).map(file => fs.readFileSync(file, 'utf8'));
+  for (const version of kotlinCompilerVersions(texts, module)) {
     const name = 'kotlin-compiler-embeddable-' + version + '.jar';
-    const sha1 = publicText('https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/' + version + '/' + name + '.sha1');
+    let sha1;
+    try {
+      sha1 = publicText('https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/' + version + '/' + name + '.sha1');
+    } catch { continue; }
     if (!/^[a-f0-9]{40}$/.test(sha1)) throw new Error('Invalid Maven compiler checksum');
-    const entry = asset(release('JetBrains/kotlin', 'v' + version), name);
+    let meta;
+    try { meta = release('JetBrains/kotlin', 'v' + version); } catch { continue; }
+    const found = meta.assets.find(assetEntry => assetEntry.name === name);
+    if (!found?.digest) {
+      console.log('Skipping unpinned Kotlin compiler candidate ' + version);
+      continue;
+    }
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'personal-kotlin-'));
     try {
       const file = path.join(temp, name);
-      const bytes = download('JetBrains/kotlin', entry, entry.digest?.replace('sha256:', ''), file);
+      const bytes = download('JetBrains/kotlin', found, found.digest.replace('sha256:', ''), file);
       if (createHash('sha1').update(bytes).digest('hex') !== sha1) throw new Error('Maven compiler checksum mismatch');
       const home = process.env.GRADLE_USER_HOME || path.join(os.homedir(), '.gradle');
       const cache = path.join(home, 'caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable', version, sha1);
