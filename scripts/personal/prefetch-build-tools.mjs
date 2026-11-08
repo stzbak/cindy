@@ -66,31 +66,35 @@ async function gradle() {
   download(repo, asset(release(repo, 'v' + version), name), checksum, dest);
   await kotlinCompiler();
 }
+export function kotlinVersions(rnVersion, module) {
+  return [...new Set([rnVersion, ...module.variants.flatMap(v => v.dependencies || [])
+    .filter(d => d.group === 'org.jetbrains.kotlin' && d.module === 'kotlin-gradle-plugin')
+    .map(d => d.version.requires)])];
+}
 export async function kotlinCompiler() {
   const catalog = fs.readFileSync('node_modules/@react-native/gradle-plugin/gradle/libs.versions.toml', 'utf8');
   const agp = catalog.match(/^agp = "([0-9.]+)"/m)?.[1];
   const rnVersion = catalog.match(/^kotlin = "([0-9.]+)"/m)?.[1];
   if (!agp || !rnVersion) throw new Error('Cannot resolve upstream Kotlin toolchain');
   const module = JSON.parse(publicText('https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/' + agp + '/gradle-' + agp + '.module'));
-  const versions = [rnVersion, ...module.variants.flatMap(v => v.dependencies || [])
-    .filter(d => d.group === 'org.jetbrains.kotlin' && d.module === 'kotlin-gradle-plugin')
-    .map(d => d.version.requires)];
-  const version = versions.sort((a, b) => a.localeCompare(b, 'en', { numeric: true })).at(-1);
-  if (!/^[0-9]+[.][0-9]+[.][0-9]+$/.test(version)) throw new Error('Invalid Kotlin version');
-  const name = 'kotlin-compiler-embeddable-' + version + '.jar';
-  const sha1 = publicText('https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/' + version + '/' + name + '.sha1');
-  if (!/^[a-f0-9]{40}$/.test(sha1)) throw new Error('Invalid Maven compiler checksum');
-  const entry = asset(release('JetBrains/kotlin', 'v' + version), name);
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'personal-kotlin-'));
-  try {
-    const file = path.join(temp, name);
-    const bytes = download('JetBrains/kotlin', entry, entry.digest?.replace('sha256:', ''), file);
-    if (createHash('sha1').update(bytes).digest('hex') !== sha1) throw new Error('Maven compiler checksum mismatch');
-    const home = process.env.GRADLE_USER_HOME || path.join(os.homedir(), '.gradle');
-    const cache = path.join(home, 'caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable', version, sha1);
-    fs.mkdirSync(cache, { recursive: true });
-    fs.copyFileSync(file, path.join(cache, name));
-  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  // React Native's included build and AGP can use different Kotlin compilers.
+  for (const version of kotlinVersions(rnVersion, module)) {
+    if (!/^[0-9]+[.][0-9]+[.][0-9]+$/.test(version)) throw new Error('Invalid Kotlin version');
+    const name = 'kotlin-compiler-embeddable-' + version + '.jar';
+    const sha1 = publicText('https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/' + version + '/' + name + '.sha1');
+    if (!/^[a-f0-9]{40}$/.test(sha1)) throw new Error('Invalid Maven compiler checksum');
+    const entry = asset(release('JetBrains/kotlin', 'v' + version), name);
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'personal-kotlin-'));
+    try {
+      const file = path.join(temp, name);
+      const bytes = download('JetBrains/kotlin', entry, entry.digest?.replace('sha256:', ''), file);
+      if (createHash('sha1').update(bytes).digest('hex') !== sha1) throw new Error('Maven compiler checksum mismatch');
+      const home = process.env.GRADLE_USER_HOME || path.join(os.homedir(), '.gradle');
+      const cache = path.join(home, 'caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable', version, sha1);
+      fs.mkdirSync(cache, { recursive: true });
+      fs.copyFileSync(file, path.join(cache, name));
+    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  }
 }
 async function windows() {
   if (process.platform !== 'win32') throw new Error('Windows build requires Windows');
