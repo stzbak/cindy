@@ -55,7 +55,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --child-concurrency=1 --network-concurrency=4
 
       - name: Bake Personal update build identity
         shell: pwsh
