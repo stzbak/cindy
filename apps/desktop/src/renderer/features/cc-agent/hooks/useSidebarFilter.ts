@@ -145,6 +145,7 @@ export interface UseSidebarFilterReturn {
   hideTaskCreated: boolean;
   setHideTaskCreated: (hide: boolean) => void;
   creatorOptions: readonly TaskBotIdentity[];
+  creatorsEnabled: boolean;
   toggleCreator: (key: string) => void;
   setCreatorsAll: () => void;
   setCreatorsNone: () => void;
@@ -278,6 +279,7 @@ export function useSidebarFilter(
   hiddenProjectKeys: ReadonlySet<string>,
   initialSnapshot: SidebarSettingsSnapshot,
   creatorOptions: readonly TaskBotIdentity[] = [],
+  creatorsEnabled = true,
 ): UseSidebarFilterReturn & {
   /** Saved inbox scope, even while the regular task list is shown. */
   inbox: Pick<UseSidebarFilterReturn, 'projects' | 'projectsAsSet' | 'vendor' | 'creators' | 'lastActivity' | 'hideAutomations' | 'hideTaskCreated'>;
@@ -307,23 +309,26 @@ export function useSidebarFilter(
   const [storedCreators, setCreators, inboxStoredCreators] = useModeFilterState(mode, scope => loadCreators(ownerId, scope));
   const normalizeCreators = useCallback((selected: FilterCreators): FilterCreators =>
     normalizeTaskCreators(selected, creatorOptions), [creatorOptions]);
-  const creators = useMemo(() => normalizeCreators(storedCreators), [normalizeCreators, storedCreators]);
+  const creators = useMemo(() => creatorsEnabled ? normalizeCreators(storedCreators) : 'all',
+    [creatorsEnabled, normalizeCreators, storedCreators]);
   useEffect(() => {
     if (creators === storedCreators) return;
     setCreators(creators);
     persistCreators(creators, ownerId, mode);
   }, [creators, storedCreators, ownerId, mode, setCreators]);
   const toggleCreator = useCallback((key: string) => {
+    if (!creatorsEnabled) return;
     setCreators(previous => {
       const next = nextCreatorsAfterToggle(normalizeCreators(previous), key);
       persistCreators(next, ownerId, mode);
       return next;
     });
-  }, [ownerId, normalizeCreators, mode, setCreators]);
+  }, [creatorsEnabled, ownerId, normalizeCreators, mode, setCreators]);
   const setCreatorsNone = useCallback(() => {
+    if (!creatorsEnabled) return;
     setCreators('none');
     persistCreators('none', ownerId, mode);
-  }, [ownerId, mode, setCreators]);
+  }, [creatorsEnabled, ownerId, mode, setCreators]);
   const setCreatorsAll = useCallback(() => {
     setCreators('all');
     persistCreators('all', ownerId, mode);
@@ -773,6 +778,7 @@ export function useSidebarFilter(
     setHideTaskCreated,
     creators,
     creatorOptions,
+    creatorsEnabled,
     toggleCreator,
     setCreatorsAll,
     setCreatorsNone,

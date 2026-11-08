@@ -73,6 +73,20 @@ function renderAsk(questions: PendingAskUser['questions']) {
 }
 
 describe('AskUserQuestion voice entry', () => {
+  it('hides question-card dictation on Windows while keeping text answers', () => {
+    const testWindow = window as unknown as { electronAPI?: { platform?: string } };
+    const previous = testWindow.electronAPI;
+    testWindow.electronAPI = { platform: 'win32' };
+    try {
+      const { view } = renderAsk([{ question: '回答？' }]);
+      expect(view.queryByTestId('ask-user-voice')).toBeNull();
+      expect(view.getByRole('textbox')).toBeTruthy();
+    } finally {
+      if (previous) testWindow.electronAPI = previous;
+      else delete testWindow.electronAPI;
+    }
+  });
+
   // Unit: real answer field/gesture; previous card tests covered only mic
   // clicks. Holding must share composer semantics without hijacking selection.
   // PR #7438: native selected-text drags can omit subsequent pointer events.

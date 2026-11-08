@@ -48,6 +48,7 @@ import { nextAskUserVoiceShortcutOrder, registerAskUserVoiceShortcutCard } from 
 import { CreateAgentSendIcon } from './SendButton';
 import { useAnswerComposerExpanded } from './useAnswerComposerExpanded';
 import { useAskUserDictation } from './useAskUserDictation';
+import { isComposerVoiceInputEnabled } from '../../../shared/personalProfile';
 import { parseVoiceQuestionSelection, type VoiceQuestionBridge, type VoiceQuestionTarget } from './voiceQuestionSelection';
 
 const ASK_USER_ANSWER_MAX_HEIGHT_PX = 148;
@@ -238,6 +239,7 @@ function AskUserQuestionForm({
   const { t } = useTranslation();
   const fileContext = useChatSessionFile();
   const { requestId, questions } = pending;
+  const composerVoiceInputEnabled = isComposerVoiceInputEnabled(window.electronAPI?.platform ?? '');
   const totalQuestions = questions.length;
   const queueIndex = pendingQuestions?.findIndex((q) => q.requestId === requestId) ?? -1;
   const [openPreviewSources, setOpenPreviewSources] = useState<ReadonlySet<string>>(() => new Set());
@@ -319,6 +321,7 @@ function AskUserQuestionForm({
     },
     focus: () => inputRef.current?.focus(),
   }, {
+    enabled: composerVoiceInputEnabled,
     onPermissionRequired: handleVoicePermissionRequired,
   });
   const dictationRef = useRef(dictation);
@@ -614,7 +617,7 @@ function AskUserQuestionForm({
   }, [currentQ]);
 
   const beginVoiceInput = useCallback((): boolean => {
-    if (voiceBridge || currentQ?.answerConstraints?.choices) return false;
+    if (!composerVoiceInputEnabled || voiceBridge || currentQ?.answerConstraints?.choices) return false;
     if (voiceSubmitRef.current) return false;
     const session = dictationRef.current;
     if (session.isBusy) {
@@ -628,7 +631,7 @@ function AskUserQuestionForm({
     }
     inputRef.current?.focus();
     return session.start();
-  }, [options.length, showCustomInput, voiceBridge, currentQ]);
+  }, [composerVoiceInputEnabled, options.length, showCustomInput, voiceBridge, currentQ]);
 
   useEffect(() => {
     if (voiceBridge || !showCustomInput || !pendingVoiceStartRef.current) return;
@@ -645,7 +648,7 @@ function AskUserQuestionForm({
   }, [voiceBridge]);
 
   useEffect(() => {
-    if (voiceBridge) return;
+    if (!composerVoiceInputEnabled || voiceBridge) return;
     // Every card hears each press; the owner check lets exactly one act. A
     // minimized card hides its microphone, so it may only stop a running take.
     const shortcutCard = registerAskUserVoiceShortcutCard(voiceShortcutOrder, {
@@ -711,7 +714,7 @@ function AskUserQuestionForm({
       window.removeEventListener('keydown', onKeyDown, true);
       unsubscribe?.();
     };
-  }, [beginVoiceInput, hostVisible, referencePreviewOpen, viewerState, voiceBridge, voiceShortcutOrder, voiceShortcutPreferred]);
+  }, [beginVoiceInput, composerVoiceInputEnabled, hostVisible, referencePreviewOpen, viewerState, voiceBridge, voiceShortcutOrder, voiceShortcutPreferred]);
 
   // ── Custom input submit (single-select mode) ──
   const handleCustomSubmit = useCallback(() => {
@@ -994,7 +997,7 @@ function AskUserQuestionForm({
           >
             <AutoGrowingAnswerTextarea
               textareaRef={inputRef}
-              voice={voiceBridge ? undefined : dictation}
+              voice={composerVoiceInputEnabled && !voiceBridge ? dictation : undefined}
               value={answerValue}
               readOnly={voiceLocked}
               onCompositionStart={markStarted}
@@ -1026,7 +1029,7 @@ function AskUserQuestionForm({
             {/* Voice and submit stay in one cluster: beside a single-line answer,
                 then below the full-width text once it wraps. */}
             <div className={cn('flex items-center justify-end gap-2', composerExpanded ? 'w-full' : 'shrink-0')}>
-              {!voiceBridge && (
+              {composerVoiceInputEnabled && !voiceBridge && (
                 <VoiceInputButton
                   testId="ask-user-voice"
                   samplesRef={dictation.samplesRef}
@@ -1108,7 +1111,7 @@ function AskUserQuestionForm({
                   button for screen readers, as the option rows do. */}
               <span className="sr-only">{options.length + 1}</span>
             </button>
-            {!voiceBridge && (
+            {composerVoiceInputEnabled && !voiceBridge && (
               <VoiceInputButton
                 testId="ask-user-voice"
                 samplesRef={dictation.samplesRef}
@@ -1307,7 +1310,7 @@ function AskUserQuestionForm({
           >
             <AutoGrowingAnswerTextarea
               textareaRef={inputRef}
-              voice={voiceBridge ? undefined : dictation}
+              voice={composerVoiceInputEnabled && !voiceBridge ? dictation : undefined}
               value={answerValue}
               readOnly={voiceLocked}
               onCompositionStart={markStarted}
@@ -1333,7 +1336,7 @@ function AskUserQuestionForm({
               )}
             />
             <div className={cn('flex items-center justify-end gap-2', composerExpanded ? 'w-full' : 'shrink-0')}>
-              {!voiceBridge && (
+              {composerVoiceInputEnabled && !voiceBridge && (
                 <VoiceInputButton
                   testId="ask-user-voice"
                   samplesRef={dictation.samplesRef}

@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   link: { invoke: vi.fn(), openLink: vi.fn() },
   snapshot: vi.fn(),
 }));
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { language: 'en' } }) }));
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => h.auth }));
 vi.mock('@/device-link/DeviceLinkContext', () => ({ useDeviceLink: () => h.link }));

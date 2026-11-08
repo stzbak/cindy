@@ -156,6 +156,26 @@ afterEach(() => {
 });
 
 describe('SidebarTabWindowsController', () => {
+  // Personal cold-open policy: existing warm-mode cases do not cover disabled prewarm.
+  // Unit, minimum input: prewarm -> open -> readiness -> spare-replenish delay.
+  it('cold-opens on demand without creating or replenishing an unused spare', () => {
+    const h = makeHarness({ prewarmEnabled: false });
+    h.controller.prewarm();
+    expect(h.created).toHaveLength(0);
+    h.controller.open(request('tab-a'));
+    expect(h.created).toHaveLength(1);
+    const win = h.created[0];
+    expect(win.show).not.toHaveBeenCalled();
+    h.controller.markRendererReady(h.wc(win));
+    expect(win.show).not.toHaveBeenCalled();
+    h.controller.markPresentationReady(h.wc(win));
+    expect(win.show).toHaveBeenCalledOnce();
+    h.controller.open(request('tab-a'));
+    vi.advanceTimersByTime(2_000);
+    expect(h.created).toHaveLength(1);
+    h.controller.dispose();
+  });
+
   it('prewarms a hidden spare and only shows it after the assigned tab presents content', () => {
     const h = makeHarness();
     h.controller.prewarm();

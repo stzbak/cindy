@@ -616,6 +616,7 @@ export function SidebarFilterPopover({
     projectsAsSet,
     creators,
     creatorOptions,
+    creatorsEnabled = true,
     toggleCreator,
     setCreatorsAll,
     setCreatorsNone,
@@ -1117,7 +1118,7 @@ export function SidebarFilterPopover({
                   </div>
                 </MenuSubRow>
 
-                <MenuSubRow label={t('ccAgent.sidebar.filterCreatorsHeading')} value={creatorValue} Icon={Users}>
+                {creatorsEnabled && <MenuSubRow label={t('ccAgent.sidebar.filterCreatorsHeading')} value={creatorValue} Icon={Users}>
                   <SelectMenuItem label={t('ccAgent.sidebar.filterCreatorsAny')} selected={creators === 'all'}
                     onSelect={setCreatorsAll} Icon={Users} />
                   {creatorOptions.length > 0 && <DropdownMenuSeparator />}
@@ -1139,7 +1140,7 @@ export function SidebarFilterPopover({
                       );
                     })}
                   </div>
-                </MenuSubRow>
+                </MenuSubRow>}
 
                 <MenuSubRow
                   label={t('ccAgent.sidebar.filterAgentHeading')}

@@ -18,6 +18,7 @@ import { NewMakerDraftRoute } from '@/features/cc-agent/NewMakerDraftRoute';
 import { OrcaWorkflowRoute } from '@/features/cc-agent/OrcaWorkflowRoute';
 import { LegacySkillDetailRedirect } from '@/features/skillhub/LegacySkillDetailRedirect';
 import { loadPluginPage } from '@/features/plugin/GhostPluginRoute';
+import { CompanionsRouteGate } from '@/features/bots/CompanionsRouteGate';
 
 function EmptyRouteFallback() {
   return null;
@@ -126,81 +127,83 @@ export const router = createHashRouter([
                       },
                       {
                         path: 'bots',
-                        lazy: () => import('@/features/bots/BotsFeatureLayout').then(({ BotsFeatureLayout }) => ({ Component: BotsFeatureLayout })),
-                        HydrateFallback: EmptyRouteFallback,
-                        children: [
-                          {
-                            index: true,
-                            lazy: () => import('@/features/bots/BotsHomeView').then(({ BotsHomeView }) => ({ Component: BotsHomeView })),
-                          },
-                          {
-                            path: 'list',
-                            lazy: () => import('@/features/bots/BotsListView').then(({ BotsListView }) => ({ Component: BotsListView })),
-                          },
-                          // 阵容是主区的一页,不是浮在对话上的模态。静态段排在 :botId
-                          // 之前(React Router 也按静态优先定级),所以 /bots/roster 不会
-                          // 被当成一个叫 "roster" 的伙伴。
-                          {
-                            path: 'roster',
-                            lazy: () => import('@/features/bots/BotRosterView').then(({ BotRosterView }) => ({ Component: BotRosterView })),
-                          },
-                          {
-                            path: 'market/:packageId?',
-                            lazy: () => import('@/features/bots/BotMarketDialog').then(({ BotMarketRoute }) => ({ Component: BotMarketRoute })),
-                          },
-                          // 伙伴群聊是独立对象(不是某位伙伴的任务),静态段 'groups' 同样排在
-                          // :botId 之前,/bots/groups/<id> 不会被当成一个叫 "groups" 的伙伴。
-                          {
-                            path: 'groups/:groupId',
-                            lazy: () => import('@/features/bots/BotGroupChatView').then(({ BotGroupChatView }) => ({ Component: BotGroupChatView })),
-                          },
-                          {
-                            path: 'remote/:deviceId/:botId',
-                            lazy: () =>
-                              import('@/features/bots/RemoteBotSessionView').then(({ RemoteBotSessionView }) => ({
-                                Component: RemoteBotSessionView,
-                              })),
-                          },
-                          {
-                            path: 'remote/:deviceId/:botId/session/:sessionId',
-                            lazy: () =>
-                              import('@/features/bots/RemoteBotSessionView').then(({ RemoteBotSessionView }) => ({
-                                Component: RemoteBotSessionView,
-                              })),
-                          },
-                          {
-                            path: 'remote/:deviceId/:botId/history/:sessionId',
-                            lazy: () =>
-                              import('@/features/bots/BotHistorySessionView').then(({ BotHistorySessionView }) => ({
-                                Component: BotHistorySessionView,
-                              })),
-                          },
-                          // 伙伴私聊只从双方时间线里的消息入口打开，不出现在左侧伙伴列表。
-                          {
-                            path: ':botId/direct/:threadId',
-                            lazy: () =>
-                              import('@/features/bots/BotDirectMessageView').then(({ BotDirectMessageView }) => ({
-                                Component: BotDirectMessageView,
-                              })),
-                          },
-                          {
-                            path: ':botId',
-                            lazy: () => import('@/features/bots/BotsHomeView').then(({ BotsHomeView }) => ({ Component: BotsHomeView })),
-                          },
-                          {
-                            path: ':botId/session/:sessionId',
-                            lazy: () => import('@/features/bots/BotSessionView').then(({ BotSessionView }) => ({ Component: BotSessionView })),
-                          },
-                          {
-                            path: ':botId/history/:sessionId',
-                            lazy: () =>
-                              import('@/features/bots/BotHistorySessionView').then(({ BotHistorySessionView }) => ({
-                                Component: BotHistorySessionView,
-                              })),
-                          },
-                        ],
+                        element: <CompanionsRouteGate />,
+                        children: [{
+                          lazy: () => import('@/features/bots/BotsFeatureLayout').then(({ BotsFeatureLayout }) => ({ Component: BotsFeatureLayout })),
+                          HydrateFallback: EmptyRouteFallback,
+                          children: [
+                            {
+                              index: true,
+                              lazy: () => import('@/features/bots/BotsHomeView').then(({ BotsHomeView }) => ({ Component: BotsHomeView })),
+                            },
+                            {
+                              path: 'list',
+                              lazy: () => import('@/features/bots/BotsListView').then(({ BotsListView }) => ({ Component: BotsListView })),
+                            },
+                            // 阵容是主区的一页,不是浮在对话上的模态。静态段排在 :botId
+                            // 之前(React Router 也按静态优先定级),所以 /bots/roster 不会
+                            // 被当成一个叫 "roster" 的伙伴。
+                            {
+                              path: 'roster',
+                              lazy: () => import('@/features/bots/BotRosterView').then(({ BotRosterView }) => ({ Component: BotRosterView })),
+                            },
+                            {
+                              path: 'market/:packageId?',
+                              lazy: () => import('@/features/bots/BotMarketDialog').then(({ BotMarketRoute }) => ({ Component: BotMarketRoute })),
+                            },
+                            // 伙伴群聊是独立对象(不是某位伙伴的任务),静态段 'groups' 同样排在
+                            // :botId 之前,/bots/groups/<id> 不会被当成一个叫 "groups" 的伙伴。
+                            {
+                              path: 'groups/:groupId',
+                              lazy: () => import('@/features/bots/BotGroupChatView').then(({ BotGroupChatView }) => ({ Component: BotGroupChatView })),
+                            },
+                            {
+                              path: 'remote/:deviceId/:botId',
+                              lazy: () =>
+                                import('@/features/bots/RemoteBotSessionView').then(({ RemoteBotSessionView }) => ({
+                                  Component: RemoteBotSessionView,
+                                })),
+                            },
+                            {
+                              path: 'remote/:deviceId/:botId/session/:sessionId',
+                              lazy: () =>
+                                import('@/features/bots/RemoteBotSessionView').then(({ RemoteBotSessionView }) => ({
+                                  Component: RemoteBotSessionView,
+                                })),
+                            },
+                            {
+                              path: 'remote/:deviceId/:botId/history/:sessionId',
+                              lazy: () =>
+                                import('@/features/bots/BotHistorySessionView').then(({ BotHistorySessionView }) => ({
+                                  Component: BotHistorySessionView,
+                                })),
+                            },
+                            // 伙伴私聊只从双方时间线里的消息入口打开，不出现在左侧伙伴列表。
+                            {
+                              path: ':botId/direct/:threadId',
+                              lazy: () =>
+                                import('@/features/bots/BotDirectMessageView').then(({ BotDirectMessageView }) => ({
+                                  Component: BotDirectMessageView,
+                                })),
+                            },
+                            {
+                              path: ':botId',
+                              lazy: () => import('@/features/bots/BotsHomeView').then(({ BotsHomeView }) => ({ Component: BotsHomeView })),
+                            },
+                            {
+                              path: ':botId/session/:sessionId',
+                              lazy: () => import('@/features/bots/BotSessionView').then(({ BotSessionView }) => ({ Component: BotSessionView })),
+                            },
+                            {
+                              path: ':botId/history/:sessionId',
+                              lazy: () =>
+                                import('@/features/bots/BotHistorySessionView').then(({ BotHistorySessionView }) => ({
+                                  Component: BotHistorySessionView,
+                                })),
+                            },
+                          ],
+                        }],
                       },
-                    ],
                   },
                   {
                     // Issue Tracker — 已迁移至 GitHub，此处仅保留引导页

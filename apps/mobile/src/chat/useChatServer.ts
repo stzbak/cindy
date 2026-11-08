@@ -1,6 +1,6 @@
 import { createConversationListState } from '@cindy/maker-shared/chatConversationList';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useFocusEffect, useIsFocused } from 'expo-router';
 import type { RemoteActionInvokeResponse } from '@cindy/device-link';
 import type { BotGroupAttachment, BotGroupRemoteActionId } from '@cindy/maker-shared/botGroupChat';
@@ -27,6 +27,7 @@ import { uploadPublicAvatar } from './publicAvatarUpload';
 import type { MobileLocalAttachmentUploadDeps } from '@/session/mobileLocalAttachmentUpload';
 import type { RemoteSerializedAttachment } from '@/session/types';
 import { useTranslation } from 'react-i18next';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 // Shared only within the current authenticated account generation and realm.
 let listOwner = '';
@@ -144,6 +145,7 @@ function ordinaryRead(path: string, room: string, body: unknown): body is { thre
 /** The account's Chat Server client, fenced to the current account, realm and mount. */
 export function useChatClient() {
   const auth = useAuth();
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
   const owner = `${auth.user?.id ?? ''}:${auth.accountGeneration}:${getActiveMobileSessionRealm()}`;
   const active = useRef(owner); active.current = owner;
   const mounted = useRef(true);
@@ -202,8 +204,8 @@ export function useChatClient() {
       knownSelfId: () => session.identity.known?.id,
       rateLimitRemainingMs: session.rateLimitRemainingMs,
       noteRateLimit: session.noteRateLimit,
-      token: async () => { check(); await client.me(); const token = await deps.current.getAccessToken(); check(); return token; }, enabled: !!auth.user };
-  }, [owner, !!auth.user]);
+      token: async () => { check(); await client.me(); const token = await deps.current.getAccessToken(); check(); return token; }, enabled: companionsEnabled && !!auth.user };
+  }, [companionsEnabled, owner, !!auth.user]);
 }
 
 /** Direct server roster, independent of device discovery and presence. */
@@ -379,8 +381,8 @@ export function useChatServerRoster(enabled: boolean) {
     if (hidden) void hideCachedChatRooms(api.userId, api.realm, [conversationId]);
   }), [api]);
   const own = state.owner === api.owner;
-  return { items: own ? state.rooms : [], serverIds: known.current.ids, loading: api.enabled && (!own || state.loading),
-    refreshing: own && state.refreshing, error: own ? state.error : null, refresh };
+  return { items: api.enabled && own ? state.rooms : [], serverIds: api.enabled ? known.current.ids : new Set<string>(), loading: api.enabled && (!own || state.loading),
+    refreshing: api.enabled && own && state.refreshing, error: api.enabled && own ? state.error : null, refresh };
 }
 
 /** How long a complete read of the room vouches for its executions, plans and failure notices

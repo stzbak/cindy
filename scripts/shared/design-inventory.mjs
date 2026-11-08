@@ -31,6 +31,8 @@ const LAYOUT_ROUTE_COMPONENTS = new Set([
   'GuestRoute',
   'ProtectedRoute',
   'LocalDbGate',
+  // Personal platform wrapper renders only Outlet/Navigate, like ProtectedRoute.
+  'CompanionsRouteGate',
   'MainLayout',
   'CCAgentFeatureLayout',
   'BotsFeatureLayout',

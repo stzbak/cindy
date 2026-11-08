@@ -5,6 +5,8 @@ import { listRemoteCollection, normalizeRemoteCollectionItems } from '@/device-l
 import { readCompanionTask } from './companionTaskReads';
 import { isTeammateTask, parseTaskCompanion, type TaskTeammate } from './teammateTaskSource';
 import type { RemoteSession } from './types';
+import { Platform } from 'react-native';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 /** Released hosts expose these read APIs even when sessions:list omits bot lanes.
  * Caller supplies its account/query fence; no process-global results or per-row reads. */
@@ -12,6 +14,8 @@ export async function readTeammateTasks(input: {
   invoke: RemoteInvoke; deviceId: string; deviceName: string; scope: string;
   sessions: readonly RemoteSession[]; previous?: readonly RemoteSession[];
   status: string; limit: number; current(): boolean;
+  /** Test/override seam; production follows the current mobile platform. */
+  platform?: string;
   /** Publish the ordinary snapshot before optional history/roster reads finish. */
   publishInitial?(sessions: RemoteSession[]): void;
 }): Promise<RemoteSession[]> {
@@ -20,6 +24,11 @@ export async function readTeammateTasks(input: {
   const rows = new Map(input.sessions.map(row => [row.id, row]));
   const previous = new Map((input.previous ?? []).filter(row => row.deviceLinkDeviceId === deviceId).map(row => [row.id, row]));
   if (!current()) return [];
+  if (!isCompanionsEnabled(input.platform ?? Platform.OS)) {
+    const ordinary = input.sessions.filter(row => row.source !== 'bot' && matches(row));
+    input.publishInitial?.(ordinary);
+    return ordinary;
+  }
   if (input.publishInitial) {
     const initial = new Map<string, RemoteSession>();
     for (const row of rows.values()) if (row.source !== 'bot' || isTeammateTask(row)) {

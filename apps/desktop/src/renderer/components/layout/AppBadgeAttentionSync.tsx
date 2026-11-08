@@ -23,12 +23,14 @@ import { isRemoteBotUnread } from '@/features/bots/remoteBotRoster';
 import { useCompanionCloud } from '@/features/bots/companionCloudStore';
 import { cloudRemoteBots, withoutShadowedBots } from '@/features/bots/companionCloudPresentation';
 import { publishNavigationAttention } from '@/lib/navigationAttentionStore';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 const readRevision = () => JSON.stringify(getBotLastReadAtMap());
 const log = createLogger('AppBadgeAttentionSync');
 
 /** 主窗口常驻：设置/伙伴页也持续更新，独立订阅避免带动布局重渲染。 */
 export function AppBadgeAttentionSync() {
   useAuth();
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   const cloud = useCompanionCloud();
   // Count each companion once, where it runs (same rows as the teammate list).
   const allBots = useBotProfiles();
@@ -37,14 +39,14 @@ export function AppBadgeAttentionSync() {
   const { groups } = useBotGroupList();
   const rosterRemoteBots = useRemoteBots();
   const remoteBots = useMemo(() => cloudRemoteBots(cloud, rosterRemoteBots), [cloud, rosterRemoteBots]);
-  useCompanionIslandChats(allBots, bots, unread, remoteBots);
+  useCompanionIslandChats(allBots, bots, unread, remoteBots, companionsEnabled);
   const groupReadRevision = useSyncExternalStore(subscribeBotReadState, readRevision, readRevision);
   const unreadLocalBots = bots.filter(bot => bot.status !== 'archived' && bot.status !== 'deleting' && !bot.hiddenAt && (unread[bot.id] ?? 0) > 0).length;
   const unreadGroups = useMemo(
     () => groups.filter(group => !group.archived && isBotGroupUnread(group)),
     [groups, groupReadRevision],
   );
-  const teammates = unreadLocalBots + unreadGroups.length + remoteBots.filter(isRemoteBotUnread).length;
+  const teammates = companionsEnabled ? unreadLocalBots + unreadGroups.length + remoteBots.filter(isRemoteBotUnread).length : 0;
   const isWindows = window.electronAPI?.platform === 'win32';
   const owner = getDataOwnerGeneration();
   const previousBadge = useRef<{
@@ -65,8 +67,8 @@ export function AppBadgeAttentionSync() {
   );
   const catalogSessionIds = useMemo(
     () => [...new Set([...sessions, ...remoteSessions, ...history.sessions]
-      .map((session) => session.id).concat(bots.flatMap(bot => bot.sessions.map(session => session.id))))],
-    [sessions, remoteSessions, history.sessions, bots],
+      .map((session) => session.id).concat(companionsEnabled ? bots.flatMap(bot => bot.sessions.map(session => session.id)) : []))],
+    [sessions, remoteSessions, history.sessions, bots, companionsEnabled],
   );
   const localSchedules = usePublishedAutomationScheduleSessionIndex();
   const attentionKinds = useSessionAttentionKinds();

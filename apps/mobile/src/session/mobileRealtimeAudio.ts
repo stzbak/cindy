@@ -4,6 +4,7 @@ import {
   type EventSubscription,
 } from 'expo-modules-core';
 import type { AudioTrace } from '@cindy/voice-input-core';
+import { isComposerVoiceInputEnabled } from '@/config/personalProfile';
 import { i18n } from '@/i18n';
 import { logMobileVoice } from '@/session/mobileVoiceDiagnostics';
 
@@ -132,6 +133,7 @@ export function shouldShowMobileVoiceUi(
   platform: string,
 ): boolean {
   if (isE2eMockRealtimeAudioEnabled()) return true;
+  if (!isComposerVoiceInputEnabled(platform)) return false;
   return platform !== 'android' || isMobileRealtimeAudioAvailable();
 }
 

@@ -32,7 +32,7 @@ export function useGroupPersonalMask(groupId: string, deviceId: string, enabled:
       return { ...old, byOperation };
     });
   }, []);
-  const current = useCallback(() => mounted.current && active.current === key && deps.current.enabled && api.current(), [key, api]);
+  const current = useCallback(() => mounted.current && active.current === key && deps.current.enabled && api.enabled && api.current(), [key, api]);
   const call = useCallback(async (kind: 'mask' | 'mask-mentions', input: Record<string, unknown> = {}) => {
     if (!current()) throw new Error('OWNER_CHANGED');
     if (!deviceId) return kind === 'mask'
