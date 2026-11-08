@@ -1,3 +1,5 @@
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
+
 export interface BotSessionInputSnapshot {
   source: string;
   role: string | null;
@@ -6,8 +8,12 @@ export interface BotSessionInputSnapshot {
 
 export function botSessionInputBlockReason(
   snapshot: BotSessionInputSnapshot | null,
+  platform = process.platform,
 ): string | null {
   if (!snapshot || snapshot.source !== 'bot') return null;
+  if (!isCompanionsEnabled(platform)) {
+    return '伙伴功能已在 Personal 版停用，旧伙伴任务仅保留只读历史';
+  }
   if (!snapshot.role || !snapshot.profileStatus) {
     return 'Bot 任务的归属信息不完整，无法继续发送消息';
   }

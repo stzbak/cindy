@@ -1,7 +1,7 @@
 import { forwardedRequestDisplayText } from '@cindy/maker-shared/message-source';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { ActivityIndicator, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { resolveRemoteText } from '@cindy/device-link';
@@ -24,6 +24,7 @@ import { useRemoteCompanionQuery } from '@/session/useRemoteCompanionQuery';
 import { useTheme, useThemedStyles, type ThemeColors } from '@/theme';
 import { fontWeight, lineHeight, radius, spacing, typeScale } from '@/theme/tokens';
 import { goBackGuarded } from '@/utils/backGuard';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 
 const AVATAR_SIZE = 28;
 /** The shared query has no settled flag; stop the pull spinner if a read never reports back. */
@@ -31,6 +32,10 @@ const PULL_REFRESH_FALLBACK_MS = 8000;
 
 /** Desktop BotDirectMessageView: a read-only two-sided thread, the viewing teammate on the right. */
 export default function CompanionDirectMessages() {
+  return isCompanionsEnabled(Platform.OS) ? <CompanionDirectMessagesContent /> : <Redirect href="/devices" />;
+}
+
+function CompanionDirectMessagesContent() {
   const params = useLocalSearchParams<{ deviceId: string; botId: string; threadId: string }>();
   const deviceId = typeof params.deviceId === 'string' ? params.deviceId : '';
   const botId = typeof params.botId === 'string' ? params.botId : '';

@@ -1,4 +1,5 @@
 import { readSidebarOwnerStorage, writeSidebarOwnerStorage } from './sidebarOwnerStorage';
+import { isCompanionsEnabled } from '../../shared/personalProfile';
 
 const KEY = 'cindy.mainEntry.v1';
 
@@ -8,6 +9,7 @@ const KEY = 'cindy.mainEntry.v1';
  * (`/bots` resolves the last-viewed teammate, else Cindy) instead of an empty list pane.
  */
 export function readMainEntryRoute(ownerId: string | null): '/bots' | '/cc-agent' {
+  if (!isCompanionsEnabled(window.electronAPI?.platform ?? '')) return '/cc-agent';
   return readSidebarOwnerStorage(KEY, ownerId) === 'bots' ? '/bots' : '/cc-agent';
 }
 
@@ -21,5 +23,6 @@ export function mainEntryRouteForPath(pathname: string): '/bots' | '/cc-agent' |
 
 export function rememberMainEntry(ownerId: string | null, pathname: string): void {
   const route = mainEntryRouteForPath(pathname);
-  if (route) writeSidebarOwnerStorage(KEY, ownerId, route === '/bots' ? 'bots' : 'tasks');
+  if (route && isCompanionsEnabled(window.electronAPI?.platform ?? ''))
+    writeSidebarOwnerStorage(KEY, ownerId, route === '/bots' ? 'bots' : 'tasks');
 }

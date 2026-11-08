@@ -4,6 +4,7 @@ import { getEffectiveLocale } from '@/lib/localePreference';
 import { isModelEnabled, getModelVisibilityVersion } from '@/state/modelVisibilityPrefs';
 import { botInvitationProgress, type BotInvitationProgress } from '../../../shared/botInvitation';
 import { useSyncExternalStore } from 'react';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 import { getDataOwnerGeneration, isDataOwnerGenerationCurrent } from '@/contexts/dataOwnerGeneration';
 import { extractIpcError } from '../../utils/ipcError';
 import { getModel } from '@cindy/model-providers';
@@ -510,6 +511,7 @@ export interface CreateBotProfileInput {
 
 // SQLite owns profiles. Keep only a replaceable in-memory projection.
 let profiles: BotProfile[] = [];
+const NO_BOT_PROFILES: BotProfile[] = [];
 const listeners = new Set<() => void>();
 let hydrated = false;
 let profileListLoaded = false;
@@ -545,6 +547,12 @@ function assertCurrentOwner(owner: ReturnType<typeof getDataOwnerGeneration>): v
 }
 
 function trackHydration(): void {
+  if (!isCompanionsEnabled(window.electronAPI?.platform ?? '')) {
+    profiles = [];
+    profileListLoaded = true;
+    hydrated = true;
+    return;
+  }
   if (activeHydration) return;
   const flight = { owner: getDataOwnerGeneration(), refreshPending: false };
   activeHydration = flight;
@@ -902,7 +910,7 @@ export function hasLoadedBotProfiles(): boolean {
 
 export function getBotProfiles(): BotProfile[] {
   ensureProfileOwner();
-  return profiles;
+  return isCompanionsEnabled(window.electronAPI?.platform ?? '') ? profiles : NO_BOT_PROFILES;
 }
 // Route helpers in lib/ read the loaded projection through this registry (no store import).
 registerLoadedBotProfilesReader(() => (hasLoadedBotProfiles() ? getBotProfiles() : null));
