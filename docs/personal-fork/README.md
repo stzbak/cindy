@@ -85,13 +85,16 @@ GitHub may disable schedules on inactive public forks; check Actions if no weekl
 run appears. Failures create GitHub issues; delivery depends on GitHub notification
 settings.
 
-Build jobs prefetch the pinned ripgrep Windows archive and React Native Gradle
-Wrapper distribution through GitHub's official asset API to avoid release-web
-HTTP 5xx failures. Both require the publisher SHA256, GitHub asset digest and
-size to agree before populating the existing binary/wrapper cache. The helper
-lives in scripts/personal/prefetch-build-tools.mjs; it does not change pins,
-generated native projects, runtime downloads or update feeds. GitHub CLI uses
-only the job-scoped built-in token. A missing checksum/digest fails the build.
+Build jobs prefetch pinned official build tools through GitHub's asset API to
+avoid release-web HTTP 5xx failures. Archives must match the publisher/registry
+checksum, GitHub SHA256 digest and size before use. Gradle and Kotlin use their
+standard caches; ripgrep uses its existing binary directory. Windows Electron
+installation and Forge use a job-scoped loopback mirror serving only the verified
+archive and npm-pinned checksum manifest, with normal checksum validation intact.
+The helper lives in scripts/personal/prefetch-build-tools.mjs. It changes no pins,
+generated native projects, runtime downloads or app update feeds. Missing or
+mismatched checksums fail the build; the built-in GitHub token is not passed to
+the Windows packaging child process.
 
 ### Versions, source identity and update feeds
 
