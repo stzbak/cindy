@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { verifyAsset, gradleCachePath } from '../prefetch-build-tools.mjs';
+import { verifyAsset, gradleCachePath, kotlinVersions } from '../prefetch-build-tools.mjs';
+
+test('included React Native build retains its compiler alongside the AGP compiler', () => {
+  const dependency = { group: 'org.jetbrains.kotlin', module: 'kotlin-gradle-plugin', version: { requires: '2.2.10' } };
+  assert.deepEqual(kotlinVersions('2.2.0', { variants: [{ dependencies: [dependency] }, { dependencies: [dependency] }] }),
+    ['2.2.0', '2.2.10']);
+});
 
 test('asset verification requires matching publisher checksum, GitHub digest and bytes', () => {
   const bytes = Buffer.from('official archive');
