@@ -1,7 +1,7 @@
 import { NotificationReconciliationBridge } from './NotificationReconciliationBridge';
 import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth/AuthContext';
 import { useSelfHostedRelay } from '@/device-link/selfHostedRelay';
@@ -10,6 +10,7 @@ import { mobileAgentNetPushScope, mobileAgentNetPushSelected, subscribeMobileAge
 import Notifications from './nativeNotifications';
 import { ChatBackgroundBridge } from './ChatBackgroundBridge';
 import { isNotificationRouteVisible } from './notificationBadge';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { notificationRecoveryRoute, parseNotificationResponseDeepLink } from './pushRegistrationModel';
 import { handleNotificationActionResponse } from './notificationActionRunner';
 import {
@@ -61,6 +62,7 @@ export function PushNotificationsBridge() {
   // 自建中转下不登记 device-link 推送;切回官方中转后按本机开关重新同步一次。
   const selfHostedRelay = useSelfHostedRelay();
   const agentNetPreferences = useMobileAgentNetPreferences();
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
 
   useEffect(() => {
     if (!isPushSupported()) return;
@@ -139,7 +141,7 @@ export function PushNotificationsBridge() {
       // A button on the alert (allow / deny / reply) is carried out in the background;
       // only an ordinary tap navigates.
       if (handleNotificationActionResponse(response)) return;
-      const deepLink = parseNotificationResponseDeepLink(response);
+      const deepLink = parseNotificationResponseDeepLink(response, companionsEnabled);
       if (!deepLink) return;
       const identifier = response.notification.request.identifier;
       const dedupeKey = identifier ? `id:${identifier}` : `deepLink:${deepLink}`;
@@ -171,7 +173,7 @@ export function PushNotificationsBridge() {
       sub.remove();
       appStateSub.remove();
     };
-  }, [flushPendingDeepLink]);
+  }, [companionsEnabled, flushPendingDeepLink]);
 
   // auth 就绪后重放冷启动 / 点击期间暂存的深链。监听本身保持挂载，避免 auth
   // 状态变化重建 effect 时与 last-response 读取发生竞态。

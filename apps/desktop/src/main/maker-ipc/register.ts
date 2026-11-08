@@ -38,6 +38,7 @@ import { FORWARDED_REQUEST_RECEIPT, verifiedOwnerRequestText, type AgentRequestR
 import { scheduleBotRemoteResourceChangedForFollowedSession } from './botRemoteResourceInvalidation.js';
 import { assertBotTaskCoordination } from './botTaskCoordination.js';
 import type { BotTaskCoordination } from '../../shared/botTaskCoordination.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 import { openSession, setSessionOpeningModelAdmission } from '../localDb/sessionOpening.js';
 import { createPluginTaskReviewResolver } from './pluginTaskReviewContext.js';
 import { createPluginTargetReviewLoader } from '../cindy-brain/pluginTargetReview.js';
@@ -13744,6 +13745,12 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       ),
   });
   botGroupChatServiceHolder?.dispose();
+  botGroupChatServiceHolder = null;
+  unsubscribeCompanionCloudBroadcast?.();
+  unsubscribeCompanionCloudBroadcast = null;
+  let restartBotCanonicalRuntime: (sessionId: string, assertOwnerCurrent: () => void) => Promise<void> =
+    async () => { throw new Error('COMPANION_RUNTIME_DISABLED'); };
+  if (isCompanionsEnabled(process.platform)) {
   // 分工 steps run in the group's folder, the 项目文件夹, or one worktree per plan (bot-group-chat.md §7.5).
   const botGroupAttachments = createBotGroupAttachmentStore({ ownerRoot: () => ownerScopedUserDataPath(), log });
   const localGroupFolders = createGroupProjectFolders({
@@ -13788,7 +13795,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     trashItem: (fullPath) => shell.trashItem(fullPath),
   });
   // The companion "restart": durable handoff from DB history, no replay of any input.
-  async function restartBotCanonicalRuntime(sessionId: string, assertOwnerCurrent: () => void): Promise<void> {
+  restartBotCanonicalRuntime = async (sessionId, assertOwnerCurrent) => {
     const recovery = contextOverflowRolloverHolder;
     if (!recovery) throwIpcError('PRECONDITION_FAILED', 'Bot recovery is not ready');
     await restartBotRuntime(sessionId, assertOwnerCurrent, {
@@ -13811,7 +13818,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       },
       onClosed: (id) => agentInputCoordinatorHolder?.onSessionClosed(id),
     });
-  }
+  };
   // 「消息平台」页的隐藏任务「重新开始」: 主任务与 IM 专线共用伙伴这一条显式重启。
   configureBotImLaneRuntime({
     isTurnRunning: (sessionId) => !!maker.getSession(sessionId)?.isTurnRunning?.(),
@@ -14039,7 +14046,6 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     log,
   };
   botGroupChatServiceHolder = withChatServer(createBotGroupChatService(botGroupChatDeps), botGroupChatDeps);
-  unsubscribeCompanionCloudBroadcast?.();
   unsubscribeCompanionCloudBroadcast = companionHomes.onChange((snapshot) => {
     const scope = captureDataOwnerBroadcastScope();
     void companionCloudView(snapshot, listCompanionDevices, companionArrivalNotices).then((view) => {
@@ -14048,6 +14054,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       broadcastToAllWindows(MAKER_PUSH.COMPANION_CLOUD_CHANGED, view, scope);
     });
   });
+  }
   // Phones reach groups through the Remote Resource protocol (bot-group-chat.md §8).
   registerBotGroupRemoteResourceProvider(() => botGroupChatServiceHolder);
   // Archive / restore changes the open tasks a teammate's roster row links as followed.

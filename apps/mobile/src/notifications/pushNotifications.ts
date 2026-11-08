@@ -19,6 +19,7 @@ import {
 } from '@/config/devServerEnvironment';
 import { getActiveSelfHostedRelay } from '@/device-link/selfHostedRelayRouting';
 import { mobileAgentNetPushSelected, mutateMobileAgentNetPush, clearMobileAgentNetPush, refreshMobileAgentNetPushPreferences } from '@/device-link/agentNetPushRegistry';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import Notifications from './nativeNotifications';
 import { readIosPushEnvironment } from './nativePushEnvironment';
 import {
@@ -387,7 +388,7 @@ export function configureForegroundNotificationBehavior(
   Notifications.setNotificationHandler({
     handleNotification: async notification => {
       const generation = pushLifecycleGeneration;
-      const route = parseNotificationResponseDeepLink({ notification });
+      const route = parseNotificationResponseDeepLink({ notification }, isCompanionsEnabled(Platform.OS));
       const enabled = await readPushEnabled();
       const stillCurrent = () => generation === pushLifecycleGeneration && current();
       const unread = enabled && stillCurrent() && !!route && !isReading(route);

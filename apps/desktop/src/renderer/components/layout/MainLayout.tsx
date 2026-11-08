@@ -149,6 +149,7 @@ import { readRemoteBots } from '@/features/bots/useRemoteBots';
 import { useSessionEntryLocationCommits } from '@/features/bots/useSessionEntryLocationCommits';
 import { islandEntryRouteState, requestIslandEntryAlertDisposal } from '@/features/bots/islandEntryAlert';
 import { requestProviderShareJoin } from '@/features/provider-share/joinIntent';
+import { isCompanionsEnabled, isCompanionCallsEnabled } from '../../../shared/personalProfile';
 import { ProviderShareGlobalHost } from '@/features/provider-share/ProviderShareGlobalHost';
 import { RelayShareGlobalHost } from '@/features/relay-share/RelayShareGlobalHost';
 import { applyScreenshotComposeRequest } from '@/features/region-screenshot/screenshotTaskHandoff';
@@ -271,6 +272,8 @@ function SidebarPinSpacer({ width }: { width: number }) {
 }
 
 export function MainLayout() {
+  const companionCallsEnabled = isCompanionCallsEnabled(window.electronAPI?.platform ?? '');
+  const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
   useRememberMainEntry();
   // 未处理报错的恢复与已处置收敛不依赖当前路由或侧栏是否挂载。
   usePendingAlertAttention();
@@ -651,13 +654,14 @@ export function MainLayout() {
       return () => isDataOwnerGenerationCurrent(owner);
     },
     isRemoteDevice: async (deviceId) => deviceId !== await window.electronAPI.getDeviceId(),
-    readKnownBotRoute: (sessionId) => botRouteForOwnedSession(getBotProfiles(), sessionId)
-      ?? remoteBotRouteForSession(readRemoteBots(), sessionId),
-    resolveBotRoute: (sessionId) => resolveBotRouteForSessionEntry(sessionId, {
+    readKnownBotRoute: (sessionId) => companionsEnabled ? botRouteForOwnedSession(getBotProfiles(), sessionId)
+      ?? remoteBotRouteForSession(readRemoteBots(), sessionId) : null,
+    resolveBotRoute: (sessionId) => companionsEnabled ? resolveBotRouteForSessionEntry(sessionId, {
       readProfiles: getBotProfiles,
       loadProfiles: ensureBotProfilesLoaded,
-    }),
+    }) : Promise.resolve(null),
     openBotRoute: (route, islandEntryId, messageClientId, sessionId) => {
+      if (!companionsEnabled) return;
       if (messageClientId && sessionId) {
         sessionEntryDepsRef.current.navigate(route, { state: {
           ...(islandEntryId ? islandEntryRouteState(islandEntryId) : {}),
@@ -772,6 +776,7 @@ export function MainLayout() {
         | { type: 'settings'; tab: 'voice-input' | 'providers' | 'billing' | 'remote-control' | 'builtin-tools' | 'im-bot'; connect?: string; intent?: 'topup'; imGroup?: 'cindy' | 'personal' },
     ) => {
       if (payload.type === 'chat-message') {
+        if (!companionsEnabled) return;
         const search = new URLSearchParams({ messageId: payload.messageId });
         if (payload.threadRootId) search.set('threadRootId', payload.threadRootId);
         if (payload.conversationKind === 'direct') search.set('conversationKind', 'direct');
@@ -779,10 +784,12 @@ export function MainLayout() {
         return;
       }
       if (payload.type === 'chat-invite') {
+        if (!companionsEnabled) return;
         requestChatInvite(payload.token);
         return;
       }
       if (payload.type === 'chat-invite-malformed') {
+        if (!companionsEnabled) return;
         reportMalformedChatInvite();
         return;
       }
@@ -2086,9 +2093,9 @@ export function MainLayout() {
       <ProviderShareGlobalHost manualOnly={isSecondaryWindow()} />
       {/* 中转加入申请:同样主窗口自动弹,副窗口只显示中转页手动打开的那条。 */}
       <RelayShareGlobalHost manualOnly={isSecondaryWindow()} />
-      {!isSecondaryWindow() && <ChatInviteHost />}
+      {!isSecondaryWindow() && companionsEnabled && <ChatInviteHost />}
       {/* 通话属于应用而不是任务页:切任务、换页面都不卸载;副窗只显示并转发操作。 */}
-      {isSecondaryWindow() ? <RemoteVoiceCallSurface /> : <GlobalVoiceCallHost />}
+      {companionCallsEnabled && (isSecondaryWindow() ? <RemoteVoiceCallSurface /> : <GlobalVoiceCallHost />)}
       {sharedTaskInvitation && <JoinSharedTaskDialog key={sharedTaskInvitation.id} open initialInvitation={sharedTaskInvitation.link}
         onOpenChange={(open) => { if (!open) setSharedTaskInvitation(null); }} />}
       {/* 窗口级拖拽兜底:拖 .cshare 进窗口空白处 → 会话导入向导 */}

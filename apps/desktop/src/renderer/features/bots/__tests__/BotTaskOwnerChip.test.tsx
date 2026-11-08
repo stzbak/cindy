@@ -33,6 +33,21 @@ it("names a Bot's background task in its ordinary header and leads back to that 
   expect(mocks.navigate).toHaveBeenCalledWith('/bots/bot%2Fa');
 });
 
+
+it('stays absent and skips profile loading on the Windows personal build', () => {
+  const testWindow = window as unknown as { electronAPI?: { platform?: string } };
+  const previous = testWindow.electronAPI;
+  testWindow.electronAPI = { platform: 'win32' };
+  try {
+    const { container } = render(<BotTaskOwnerChip session={session('task')} />);
+    expect(container.firstChild).toBeNull();
+    expect(mocks.ensure).not.toHaveBeenCalled();
+  } finally {
+    if (previous) testWindow.electronAPI = previous;
+    else delete testWindow.electronAPI;
+  }
+});
+
 it('stays out of the way for a task no Bot is responsible for', () => {
   const { container } = render(<BotTaskOwnerChip session={session('plain')} />);
   expect(container.firstChild).toBeNull();

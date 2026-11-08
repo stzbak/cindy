@@ -139,6 +139,7 @@ import { readHandoffPicture } from '../input-handoff/pictureRef.js';
 import { isIpcError } from '../../shared/ipc-errors.js';
 import type { PluginRegistry } from '../maker-host/plugins/plugin-registry.js';
 import { BUILTIN_LIZI_MCP_IDS } from '../maker-host/plugins/builtin-plugins.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 import {
   type ChatHistoryReaderDeps,
 } from './remoteChatHistory.js';
@@ -757,6 +758,7 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
         return result;
       }) },
       getSessionProject: readCurrentSessionProject,
+      enableCompanionTools: isCompanionsEnabled(process.platform),
       runtimeCapabilities: deps.runtimeCapabilities,
       productHelpDocs: HELP_KNOWLEDGE,
       // Install / auto-update requests become owner-only Host cards (see agent-app-update/).

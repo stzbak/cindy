@@ -17,6 +17,7 @@ import { CCAgentSessionView } from '@/features/cc-agent/CCAgentSessionView';
 import { NewMakerDraftRoute } from '@/features/cc-agent/NewMakerDraftRoute';
 import { OrcaWorkflowRoute } from '@/features/cc-agent/OrcaWorkflowRoute';
 import { LegacySkillDetailRedirect } from '@/features/skillhub/LegacySkillDetailRedirect';
+import { CompanionsRouteGate } from '@/features/bots/CompanionsRouteGate';
 
 function EmptyRouteFallback() {
   return null;
@@ -123,7 +124,8 @@ export const router = createHashRouter([
                   },
                   {
                     path: 'bots',
-                    lazy: () => import('@/features/bots/BotsFeatureLayout').then(({ BotsFeatureLayout }) => ({ Component: BotsFeatureLayout })),
+                    element: <CompanionsRouteGate />,
+                    children: [{ lazy: () => import('@/features/bots/BotsFeatureLayout').then(({ BotsFeatureLayout }) => ({ Component: BotsFeatureLayout })),
                     HydrateFallback: EmptyRouteFallback,
                     children: [
                       {
@@ -195,7 +197,7 @@ export const router = createHashRouter([
                             Component: BotHistorySessionView,
                           })),
                       },
-                    ],
+                    ] }],
                   },
                   {
                     // Issue Tracker — 已迁移至 GitHub，此处仅保留引导页

@@ -1,5 +1,7 @@
 import { isTeammateTask } from './teammateTaskSource';
 import { applyMobileSessionRebalancePreferencePatch } from './sessionRebalanceCache';
+import { Platform } from 'react-native';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { readTokenSpeedSnapshot, type TokenSpeedSnapshot } from '@cindy/maker-shared/usage-format';
 import { historyTurnEnded, nextHistoryCacheReceipt } from '@cindy/maker-shared/message-window';
 import { normalizeTaskTags, reconcileTaskTags } from '@cindy/maker-shared';
@@ -1795,6 +1797,7 @@ function isDetailOnlySession(session: RemoteSession): boolean {
 
 function reconcileVisibleSessions(): void {
   const next = mergedSessions.filter((session) => !isDetailOnlySession(session)
+    && (isCompanionsEnabled(Platform.OS) || session.source !== 'bot')
     && sessionListRemovalPreviews.pendingFields(session.id).length === 0
     && (CINDY_MAKE_ENABLED || !isCindyMakeSource(session.source)));
   if (!sameElementRefs(visibleSessions, next)) visibleSessions = next;

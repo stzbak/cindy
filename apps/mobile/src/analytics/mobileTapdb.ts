@@ -7,13 +7,19 @@ import {
   type TapdbRegion,
 } from 'xdt-tapdb';
 
+import { isMobileTapdbEnabled } from '@/config/personalProfile';
 import { hydrateAnalyticsConsent, isAnalyticsAllowed } from './analyticsConsentStore';
 
 export type MobileTapdbInitStatus =
   | { ok: true }
   | {
       ok: false;
-      reason: 'not_consented' | 'missing_config' | 'native_unavailable' | 'native_error';
+      reason:
+        | 'not_consented'
+        | 'missing_config'
+        | 'native_unavailable'
+        | 'native_error'
+        | 'disabled_by_profile';
     };
 
 let initPromise: Promise<MobileTapdbInitStatus> | null = null;
@@ -42,6 +48,9 @@ function selfHostTapdbConfig(): SelfHostTapdbConfig {
  * 这个结果——用户在登录页同意后会再调一次,那一次才真正 init。
  */
 export function initMobileTapdb(): Promise<MobileTapdbInitStatus> {
+  if (!isMobileTapdbEnabled(Platform.OS)) {
+    return Promise.resolve({ ok: false, reason: 'disabled_by_profile' });
+  }
   if (initPromise) return initPromise;
 
   return hydrateAnalyticsConsent().then(() => {

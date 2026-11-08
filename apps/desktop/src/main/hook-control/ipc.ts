@@ -1,4 +1,5 @@
 import { registerGroupImageReader, fetchOfficialGroupImage } from './groupImageBridge.js';
+import { isImBotsEnabled } from '../../shared/personalProfile.js';
 /**
  * hook-control/ipc.ts
  * ---------------------------------------------------------------------------
@@ -943,6 +944,7 @@ export function readXCompanionSummary(): { available: boolean; visible: boolean;
 
 /** 注册 IPC 并按配置 + 登录态拉起连接。bootstrap 里调用一次。 */
 export function registerHookControlIpc(): void {
+  if (!isImBotsEnabled(process.platform)) return;
   registerTrustedHookControlHandler(HOOK_CONTROL_INVOKE.GET, () => {
     if (!hookControlAvailable()) return { hook: disabledHookView() };
     const hook = ensureInstances().manager.snapshot();
@@ -1452,6 +1454,7 @@ export function readXCompanionAssignment(): { botId: string; enabled: boolean } 
 
 /** Called after the current account DB is ready; app:ready-for-bot may retry it. */
 export function startHookControlAccount(): void {
+  if (!isImBotsEnabled(process.platform)) return;
   if (!hookControlAvailable()) return;
   // 群窗口生命周期入口在 manager.activateAccount 内执行并纳入账号级
   // pendingAccountOps；当前永久保留模式下该入口是兼容 no-op。

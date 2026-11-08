@@ -5,6 +5,7 @@
  * refresh answered after a newer push.
  */
 import { useEffect, useSyncExternalStore } from 'react';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 import {
   getDataOwnerGeneration,
@@ -26,6 +27,7 @@ let hydratedOwner = '';
 let users = 0;
 let unsubscribePush: (() => void) | null = null;
 const listeners = new Set<() => void>();
+const companionsEnabled = () => isCompanionsEnabled(window.electronAPI?.platform ?? '');
 
 export function companionCloudApi(): MakerApi | null {
   if (typeof window === 'undefined') return null;
@@ -76,6 +78,10 @@ function ensureOwner(): void {
 
 /** Re-reads the snapshot; resolves once the answer is applied (or dropped as superseded), never rejects. */
 export function refreshCompanionCloudSettled(): Promise<void> {
+  if (!companionsEnabled()) {
+    apply(EMPTY_COMPANION_CLOUD_SNAPSHOT);
+    return Promise.resolve();
+  }
   ensureOwner();
   const api = companionCloudApi();
   if (!api) return Promise.resolve();
@@ -120,13 +126,15 @@ function subscribe(listener: () => void): () => void {
 }
 
 function read(): CompanionCloudSnapshot {
+  if (!companionsEnabled()) return EMPTY_COMPANION_CLOUD_SNAPSHOT;
   ensureOwner();
   return snapshot;
 }
 
 /** Live companion homes; inert (`enabled: false`) on servers without the feature. */
 export function useCompanionCloud(): CompanionCloudSnapshot {
-  useEffect(() => start(), []);
+  const enabled = companionsEnabled();
+  useEffect(() => enabled ? start() : undefined, [enabled]);
   return useSyncExternalStore(subscribe, read, read);
 }
 

@@ -1,0 +1,214 @@
+name: personal-release
+
+on:
+  push:
+    branches: [personal]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'config/**'
+      - 'scripts/**'
+      - '.github/workflows/personal-*.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+    inputs:
+      expected_previous_head:
+        description: 'Weekly staging only: Personal HEAD observed before rebasing'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: personal-stable-release
+  cancel-in-progress: false
+
+env:
+  XDT_SKIP_AGENT_BIN_INSTALL: '1'
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  ELECTRON_OVERRIDE_DIST_PATH: '${{ github.workspace }}/.electron-stub-dist'
+  NODE_OPTIONS: '--max-old-space-size=8192'
+
+jobs:
+  identity:
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.identity.outputs.needed }}
+      desktopVersion: ${{ steps.identity.outputs.desktopVersion }}
+      androidVersion: ${{ steps.identity.outputs.androidVersion }}
+      buildNumber: ${{ steps.identity.outputs.buildNumber }}
+      tag: ${{ steps.identity.outputs.tag }}
+      upstreamBase: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Enforce release branch identity
+        env:
+          EXPECTED_PREVIOUS_HEAD: ${{ inputs.expected_previous_head }}
+        run: |
+          if [ "$GITHUB_REF" = refs/heads/automation/upstream-sync-staging ]; then
+            [[ "$EXPECTED_PREVIOUS_HEAD" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          else
+            test "$GITHUB_REF" = refs/heads/personal
+            test -z "$EXPECTED_PREVIOUS_HEAD"
+          fi
+      - name: Determine official ancestry for patch validation
+        id: base
+        run: |
+          git fetch --no-tags https://github.com/makecindy/cindy.git main
+          echo "sha=$(git merge-base HEAD FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Pin official platform versions and Personal build sequence
+        id: identity
+        run: node scripts/personal/release-identity.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-release-identity
+          path: ${{ runner.temp }}/personal-release-identity/release-identity.json
+
+  verify:
+    needs: identity
+    if: needs.identity.outputs.needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm personal:test-sync
+      - run: pnpm personal:verify
+        env:
+          PERSONAL_UPSTREAM_SHA: ${{ needs.identity.outputs.upstreamBase }}
+
+  windows:
+    needs: identity
+    if: needs.identity.outputs.needed == 'true'
+    uses: ./.github/workflows/personal-windows-build.yml
+    with:
+      version: ${{ needs.identity.outputs.desktopVersion }}
+      build_number: ${{ fromJSON(needs.identity.outputs.buildNumber) }}
+      release_tag: ${{ needs.identity.outputs.tag }}
+
+  android:
+    needs: identity
+    if: needs.identity.outputs.needed == 'true'
+    uses: ./.github/workflows/personal-android-release.yml
+    with:
+      version: ${{ needs.identity.outputs.androidVersion }}
+      build_number: ${{ fromJSON(needs.identity.outputs.buildNumber) }}
+    secrets: inherit
+
+  publish:
+    needs: [identity, verify, windows, android]
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_PREVIOUS_HEAD: ${{ inputs.expected_previous_head }}
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+      DESKTOP_VERSION: ${{ needs.identity.outputs.desktopVersion }}
+      ANDROID_VERSION: ${{ needs.identity.outputs.androidVersion }}
+      PERSONAL_BUILD_NUMBER: ${{ needs.identity.outputs.buildNumber }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: personal-*-release
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: personal-release-identity
+          path: release
+      - name: Verify both platform identities before publishing
+        run: |
+          python3 - <<'CHECK'
+          import os,json,hashlib
+          from pathlib import Path
+          root=Path('release')
+          win=json.loads((root/'cindy-personal-windows.json').read_text())
+          android=json.loads((root/'cindy-personal-android.json').read_text())
+          identity=json.loads((root/'release-identity.json').read_text())
+          assert identity['sourceCommit']==os.environ['GITHUB_SHA']==win['sourceCommit']==android['sourceCommit']
+          assert win['app']['version']==os.environ['DESKTOP_VERSION']
+          assert android['version']==os.environ['ANDROID_VERSION']
+          assert win['app']['personalBuildNumber']==android['buildNumber']==int(os.environ['PERSONAL_BUILD_NUMBER'])
+          assert win['region']==android['region']=='cn'
+          assert android['packageName']=='com.stzbak.cindy'
+          for asset in [win['app']['hotfix'],win['app']['installer']]:
+            file=root/asset['file'].rsplit('/',1)[1]
+            assert file.stat().st_size==asset['size']
+            assert hashlib.sha256(file.read_bytes()).hexdigest()==asset['sha256']
+          files=sorted(file for file in root.iterdir() if file.name!='SHA256SUMS')
+          (root/'SHA256SUMS').write_text(''.join(hashlib.sha256(file.read_bytes()).hexdigest()+'  '+file.name+'\n' for file in files))
+          CHECK
+      - name: Promote the tested source with concurrent-change protection
+        run: node scripts/personal/promote-release.mjs
+      - name: Publish complete Personal stable release
+        run: |
+          cat > release-notes.md <<EOF
+          Cindy Personal CN: Windows $DESKTOP_VERSION / Android $ANDROID_VERSION.
+
+          - Official platform version numbers; Personal build $PERSONAL_BUILD_NUMBER.
+          - Source: $GITHUB_SHA.
+          - Android package: com.stzbak.cindy; stable Personal signing key.
+          - Windows: unsigned installer and SHA256-verified hotfix; Personal app feed, official Agent binary feed.
+          - First migration from the validation packages requires manually installing this release once.
+          EOF
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')" = "$GITHUB_SHA"
+            test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = true || { echo 'Published releases are immutable; dispatch a new run to rebuild'; exit 1; }
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Cindy Personal CN: Windows $DESKTOP_VERSION / Android $ANDROID_VERSION" --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest --notes-file release-notes.md
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url --jq '.url' >> "$GITHUB_STEP_SUMMARY"
+
+  report-failure:
+    needs: [identity, verify, windows, android, publish]
+    if: always() && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record the failed release without changing the previous stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title='[Personal release] automation failed'
+          body="$RUNNER_TEMP/personal-release-failure.md"
+          cat > "$body" <<BODY
+          Personal release validation, build, promotion or publication failed.
+
+          - Run: ${RUN_URL}
+          - The previous complete stable release remains available.
+          - If promotion succeeded before publication failed, its old Personal HEAD is preserved under automation/personal-backup-<run_id>.
+          - Fix the failure and dispatch personal-release again. Published releases are never overwritten.
+          BODY
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search '"[Personal release] automation failed" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
+          fi

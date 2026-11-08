@@ -1,5 +1,6 @@
 import { TAB_LABEL_KEY } from '@/lib/tabLabels';
 import { defineSettings, type SettingsSearchModule } from './settingsSearchTypes';
+import { isCompanionsEnabled } from '../../../shared/personalProfile';
 
 /** Static search metadata owned by this settings module; no component mounting or IPC. */
 export const generalSettings = defineSettings({
@@ -49,6 +50,7 @@ export const generalSettings = defineSettings({
   },
   bots: {
     id: 'general.bots',
+    isVisible: ({ platform }) => isCompanionsEnabled(platform),
     tab: 'general',
     targetId: 'settings-bots',
     titleKey: 'settings.sections.bots',

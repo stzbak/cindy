@@ -395,6 +395,7 @@ export function SidebarFilterPopover({
     projectsAsSet,
     creators,
     creatorOptions,
+    creatorsEnabled = true,
     toggleCreator,
     setCreatorsAll,
     setCreatorsNone,
@@ -536,7 +537,8 @@ export function SidebarFilterPopover({
 
   // 一级「筛选」行摘要：偏离默认的维度数。
   const activeFilterCount =
-    (projects !== 'all' ? 1 : 0) + (vendor !== 'all' ? 1 : 0) + (lastActivity !== 'all' ? 1 : 0) + (creators !== 'all' ? 1 : 0);
+    (projects !== 'all' ? 1 : 0) + (vendor !== 'all' ? 1 : 0) + (lastActivity !== 'all' ? 1 : 0)
+    + (creatorsEnabled && creators !== 'all' ? 1 : 0);
   const filterSummary =
     activeFilterCount > 0
       ? t('ccAgent.sidebar.filterSummaryActive', { count: activeFilterCount })
@@ -815,7 +817,7 @@ export function SidebarFilterPopover({
                   </div>
                 </MenuSubRow>
 
-                <MenuSubRow label={t('ccAgent.sidebar.filterCreatorsHeading')} value={creatorValue} Icon={Users}>
+                {creatorsEnabled && <MenuSubRow label={t('ccAgent.sidebar.filterCreatorsHeading')} value={creatorValue} Icon={Users}>
                   <SelectMenuItem label={t('ccAgent.sidebar.filterCreatorsAny')} selected={creators === 'all'}
                     onSelect={setCreatorsAll} Icon={Users} />
                   <SelectMenuItem label={t('ccAgent.sidebar.filterCreatorsNone')} selected={creators === 'none'}
@@ -839,7 +841,7 @@ export function SidebarFilterPopover({
                       );
                     })}
                   </div>
-                </MenuSubRow>
+                </MenuSubRow>}
 
                 <MenuSubRow
                   label={t('ccAgent.sidebar.filterAgentHeading')}

@@ -55,6 +55,7 @@ export type AskUserDictationTarget = {
 
 export type UseAskUserDictationOptions = {
   onPermissionRequired?: (error: string) => void | Promise<void>;
+  enabled?: boolean;
 };
 
 type Anchor = { text: string; range: TextRange };
@@ -290,6 +291,7 @@ export function useAskUserDictation(
   }, [formatError, reportError, restoreMute, setVoiceState, showSpeakerFiltered, stopEngine, t]);
 
   const start = useCallback((): boolean => {
+    if (optionsRef.current?.enabled === false) return false;
     const api = window.electronAPI?.voiceInput;
     if (!api?.start) return false;
     const current = stateRef.current;

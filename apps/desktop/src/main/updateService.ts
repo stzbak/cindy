@@ -49,7 +49,7 @@ import { isRunningUnderArm64Translation } from './arm64Translation';
 import type { Manifest } from './manifestService';
 import { download, DownloadError } from './downloader/index';
 import { ProgressNormalizer } from './updateProgressNormalizer';
-import { compareAppUpdateVersions } from './updateVersionPolicy';
+import { comparePersonalAppUpdateVersions as compareAppUpdateVersions, appUpdateDownloadUrl } from './personalAppUpdate';
 import { CURRENT_APP_ID } from '../shared/brandRegion';
 import { syncWindowsVersionAfterUpdate, windowsInstallKey } from './windowsInstallationVersion';
 import { writeStartupBinaryUpdateMarker } from './agent-binaries/startup-update';
@@ -121,6 +121,7 @@ interface UpdateStatusPayload {
 }
 
 interface PatchInfo {
+  personalBuildNumber?: number;
   version: string;
   fileName: string;
   sha256: string;
@@ -156,8 +157,8 @@ interface PatchInfo {
  * 同版本的 arm64 原生包——版本不变，但把整个 .app 换成原生架构。macOS 更新脚本整包删除
  * 再移入新 .app，不会残留 x64 文件。其它任何同版本、旧版本都沿用原拒绝。
  */
-function appUpdateRelation(version: unknown, targetArch: string | undefined) {
-  const relation = compareAppUpdateVersions(version, app.getVersion());
+function appUpdateRelation(version: unknown, targetArch: string | undefined, targetBuild?: number) {
+  const relation = compareAppUpdateVersions(version, app.getVersion(), targetBuild);
   if (
     relation === 'same'
     && targetArch === 'arm64'
@@ -210,6 +211,7 @@ const STARTUP_MANIFEST_TIMEOUT_MS = 8_000;
 
 let currentStatus: UpdateStatus = 'idle';
 let readyVersion: string | undefined;
+let readyBuildNumber: number | undefined;
 /** Version of the patch currently being downloaded (downloading / superseding only). */
 let downloadingVersion: string | undefined;
 let readyFilePath: string | undefined;
@@ -754,7 +756,7 @@ function checkExistingPatch(): {
   }
 
   const currentVersion = app.getVersion();
-  const versionRelation = appUpdateRelation(patchInfo.version, patchInfo.targetArch);
+  const versionRelation = appUpdateRelation(patchInfo.version, patchInfo.targetArch, patchInfo.personalBuildNumber);
   if (versionRelation === 'same') {
     // Patch matches current version → already applied; clean up and re-check.
     // 换装原生架构的补丁在换装完成后（进程已是 arm64）同样走这里清理。
@@ -786,6 +788,7 @@ function checkExistingPatch(): {
 
   // Patch present, awaiting relaunch.
   readyVersion = patchInfo.version;
+  readyBuildNumber = patchInfo.personalBuildNumber;
   readyFilePath = patchFilePath;
   readyChannelEpoch = updateChannelEpoch;
   readyTargetArch = patchInfo.targetArch;
@@ -938,6 +941,7 @@ function discardStagedPatchFiles(): void {
     try { fs.unlinkSync(readyFilePath); } catch { /* ignore */ }
   }
   readyVersion = undefined;
+  readyBuildNumber = undefined;
   readyFilePath = undefined;
   readyChannelEpoch = undefined;
   readyTargetArch = undefined;
@@ -967,6 +971,7 @@ function flushDeferredStagedPatchClear(): void {
     // 标记先留着——下载失败若把旧补丁快照写回来,后续还能再清。
     if (readyChannelEpoch === stale.epoch) {
       readyVersion = undefined;
+      readyBuildNumber = undefined;
       readyFilePath = undefined;
       readyChannelEpoch = undefined;
       readyTargetArch = undefined;
@@ -1192,6 +1197,7 @@ async function doCheckForUpdate(manifestOverride?: Manifest | null): Promise<Che
   // previousReadyVersion/Path 用于失败时静默回退到 a。
   const wasReady = currentStatus === 'ready';
   const previousReadyVersion = wasReady ? readyVersion : undefined;
+  const previousReadyBuildNumber = wasReady ? readyBuildNumber : undefined;
   const previousReadyFilePath = wasReady ? readyFilePath : undefined;
   const previousReadyChannelEpoch = wasReady ? readyChannelEpoch : undefined;
   const previousReadyTargetArch = wasReady ? readyTargetArch : undefined;
@@ -1215,7 +1221,7 @@ async function doCheckForUpdate(manifestOverride?: Manifest | null): Promise<Che
 
   const targetArch = getAppUpdateTargetArch(manifest);
   if (targetArch) log.info('Rosetta-translated x64 build: checking the %s native package', targetArch);
-  const versionRelation = appUpdateRelation(latestVersion, targetArch);
+  const versionRelation = appUpdateRelation(latestVersion, targetArch, manifest.app.personalBuildNumber);
   if (versionRelation === 'invalid') {
     log.error(
       'Refusing app update because version comparison is invalid: current=%s latest=%s',
@@ -1265,14 +1271,14 @@ async function doCheckForUpdate(manifestOverride?: Manifest | null): Promise<Che
   }
 
   // wasReady 且 manifest 仍是已下好的同一个版本 → 无事发生,保持 ready。
-  if (wasReady && latestVersion === previousReadyVersion && targetArch === previousReadyTargetArch) {
+  if (wasReady && latestVersion === previousReadyVersion && targetArch === previousReadyTargetArch && manifest.app.personalBuildNumber === previousReadyBuildNumber) {
     log.info('Ready patch v%s still matches latest — no superseding needed', previousReadyVersion);
     return 'ready';
   }
 
   log.info('Update available: %s → %s (wasReady=%s)', currentVersion, latestVersion, wasReady);
 
-  const downloadUrl = `${getBaseUrl()}/${asset.file}`;
+  const downloadUrl = appUpdateDownloadUrl(asset.file, getBaseUrl());
   const fileName = path.basename(asset.file);
   const destPath = path.join(getUpdatesDir(), fileName);
 
@@ -1397,6 +1403,7 @@ async function doCheckForUpdate(manifestOverride?: Manifest | null): Promise<Che
     const requireRelogin = manifest.app.requireRelogin === true
       && compareAppUpdateVersions(latestVersion, currentVersion) === 'newer';
     writePatchInfo({
+      personalBuildNumber: manifest.app.personalBuildNumber,
       version: latestVersion,
       fileName,
       sha256: asset.sha256.toLowerCase(),
@@ -1413,6 +1420,7 @@ async function doCheckForUpdate(manifestOverride?: Manifest | null): Promise<Che
       writeReloginFlag(latestVersion);
     }
     readyVersion = latestVersion;
+    readyBuildNumber = manifest.app.personalBuildNumber;
     readyFilePath = result.path;
     readyChannelEpoch = updateChannelEpoch;
     readyTargetArch = targetArch;
@@ -1446,6 +1454,7 @@ async function doCheckForUpdate(manifestOverride?: Manifest | null): Promise<Che
           try { fs.unlinkSync(previousReadyFilePath); } catch { /* ignore */ }
         }
         readyVersion = undefined;
+        readyBuildNumber = undefined;
         readyFilePath = undefined;
         readyChannelEpoch = undefined;
         readyTargetArch = undefined;
@@ -1455,6 +1464,7 @@ async function doCheckForUpdate(manifestOverride?: Manifest | null): Promise<Che
       }
       log.info('Superseding download failed — rolling back to ready v%s', previousReadyVersion);
       readyVersion = previousReadyVersion;
+      readyBuildNumber = previousReadyBuildNumber;
       readyFilePath = previousReadyFilePath;
       readyChannelEpoch = previousReadyChannelEpoch;
       readyTargetArch = previousReadyTargetArch;
@@ -1486,6 +1496,7 @@ function handleApplyFailure(reason: string): void {
   log.error('Update apply failed (reason=%s), clearing patch and notifying renderer', reason);
   removePatchInfo();
   readyVersion = undefined;
+  readyBuildNumber = undefined;
   readyFilePath = undefined;
   readyChannelEpoch = undefined;
   readyTargetArch = undefined;
@@ -2045,7 +2056,7 @@ async function executeRelaunchUnguarded(
   }
 
   const currentVersion = app.getVersion();
-  const versionRelation = appUpdateRelation(readyVersion, readyTargetArch);
+  const versionRelation = appUpdateRelation(readyVersion, readyTargetArch, readyBuildNumber);
   if (versionRelation !== 'newer') {
     log.error(
       'executeRelaunch() refused non-upgrade patch: current=%s patch=%s relation=%s',
@@ -2223,8 +2234,7 @@ export async function checkAppUpdateForAgent(): Promise<{
   // the user can download and install through the built-in update action.
   const manifest = await fetchAppUpdateManifest();
   if (!manifest) return { status: 'manifest_failed', currentVersion, reason: '无法读取当前渠道的更新信息。' };
-  // Agent 的安装结果按「重启后版本前进」判定，同版本换装原生架构只走侧栏更新提示。
-  const relation = compareAppUpdateVersions(manifest.app?.version, currentVersion);
+  const relation = compareAppUpdateVersions(manifest.app?.version, currentVersion, manifest.app?.personalBuildNumber);
   if (relation === 'invalid') return {
     status: 'manifest_failed', currentVersion, reason: '当前渠道的更新版本信息无效。',
   };
@@ -2665,7 +2675,7 @@ export function initUpdateService(): void {
       log.info('Startup: current=%s, latest=%s', currentVersion, latestVersion);
 
       const startupTargetArch = getAppUpdateTargetArch(manifest);
-      const startupVersionRelation = appUpdateRelation(latestVersion, startupTargetArch);
+      const startupVersionRelation = appUpdateRelation(latestVersion, startupTargetArch, manifest.app.personalBuildNumber);
       if (startupVersionRelation !== 'newer') {
         // The online manifest is authoritative. A local patch that is no longer
         // advertised must not survive into a later offline startup.
@@ -2700,6 +2710,7 @@ export function initUpdateService(): void {
         patchResult.action === 'relaunch'
         && patchResult.version === latestVersion
         && patchResult.targetArch === startupTargetArch
+        && readyBuildNumber === manifest.app.personalBuildNumber
       ) {
         log.info('Local patch v%s matches latest, requesting relaunch', patchResult.version);
         if (process.platform === 'linux') {
@@ -2729,6 +2740,7 @@ export function initUpdateService(): void {
           patchResult.version, latestVersion,
         );
         readyVersion = undefined;
+        readyBuildNumber = undefined;
         readyFilePath = undefined;
         readyChannelEpoch = undefined;
         readyTargetArch = undefined;

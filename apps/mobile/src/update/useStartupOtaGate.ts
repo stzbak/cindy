@@ -4,7 +4,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as Updates from 'expo-updates';
-import { IS_OTA_SELFHOST, REVIEW_MODE } from '@/config/env';
+import { APP_PLATFORM, IS_OTA_SELFHOST, REVIEW_MODE } from '@/config/env';
+import { isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
 import {
   runEmergencyOtaRecovery,
   runStartupOtaUpdate,
@@ -57,7 +58,12 @@ export function useStartupOtaGate(channel: UpdateChannel = 'release'): boolean {
   // build-time 配置,不受此字段控制,边界见 maker-shared clientEndpoints 的
   // CLIENT_ENDPOINT_REVIEW_KEY)。REVIEW_MODE 是 live binding,本 hook 挂载在
   // 端点闸门 ready 之后,读到的必是清单匹配结果。
-  const baseEnabled = IS_OTA_SELFHOST && !__DEV__ && Updates.isEnabled && !REVIEW_MODE;
+  const baseEnabled =
+    IS_OTA_SELFHOST &&
+    !__DEV__ &&
+    Updates.isEnabled &&
+    !REVIEW_MODE &&
+    !isPersonalAndroidUpdateFeedEnabled(APP_PLATFORM);
   const [ready, setReady] = useState(!baseEnabled);
   const started = useRef(false);
 
