@@ -57,6 +57,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --child-concurrency=1 --network-concurrency=4
 
+      - name: Prefetch verified official ripgrep through GitHub asset API
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/personal/prefetch-build-tools.mjs ripgrep
+
       - name: Bake Personal update build identity
         shell: pwsh
         run: |

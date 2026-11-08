@@ -85,6 +85,14 @@ GitHub may disable schedules on inactive public forks; check Actions if no weekl
 run appears. Failures create GitHub issues; delivery depends on GitHub notification
 settings.
 
+Build jobs prefetch the pinned ripgrep Windows archive and React Native Gradle
+Wrapper distribution through GitHub's official asset API to avoid release-web
+HTTP 5xx failures. Both require the publisher SHA256, GitHub asset digest and
+size to agree before populating the existing binary/wrapper cache. The helper
+lives in scripts/personal/prefetch-build-tools.mjs; it does not change pins,
+generated native projects, runtime downloads or update feeds. GitHub CLI uses
+only the job-scoped built-in token. A missing checksum/digest fails the build.
+
 ### Versions, source identity and update feeds
 
 Displayed versions come from the public official CN feeds in `config/endpoint.json`.
