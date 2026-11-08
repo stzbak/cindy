@@ -58,6 +58,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prefetch verified official gradle through GitHub asset API
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/personal/prefetch-build-tools.mjs gradle
+
       - name: Prepare Personal release identity
         run: |
           version="${{ inputs.version }}"
