@@ -95,6 +95,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm personal:test-sync
+      - run: node --test scripts/personal/__tests__/prefetch-build-tools.test.mjs
       - run: pnpm personal:verify
         env:
           PERSONAL_UPSTREAM_SHA: ${{ needs.identity.outputs.upstreamBase }}
