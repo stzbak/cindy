@@ -87,10 +87,11 @@ settings.
 
 Build jobs prefetch pinned official build tools through GitHub's asset API to
 avoid release-web HTTP 5xx failures. Archives must match the publisher/registry
-checksum, GitHub SHA256 digest and size before use. Gradle and Kotlin use their
+checksum, GitHub SHA256 digest and size before use. Legacy NSIS assets have no
+GitHub digest and instead require the SHA512 pinned in electron-builder. Gradle and Kotlin use their
 standard caches; ripgrep uses its existing binary directory. Windows Electron
-installation and Forge use a job-scoped loopback mirror serving only the verified
-archive and npm-pinned checksum manifest, with normal checksum validation intact.
+installation, Forge and NSIS use a job-scoped loopback mirror serving only verified
+archives and the npm-pinned Electron checksum manifest, with normal checksum validation intact.
 The helper lives in scripts/personal/prefetch-build-tools.mjs. It changes no pins,
 generated native projects, runtime downloads or app update feeds. Missing or
 mismatched checksums fail the build; the built-in GitHub token is not passed to
