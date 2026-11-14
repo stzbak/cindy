@@ -17,10 +17,23 @@ const project = (folder: string) => `/Users/me/Library/Application Support/Cindy
 const schedule = (workingDir: string) => ({ id: 's1', source: 'project', workingDir }) as unknown as Schedule;
 const ctx = { runId: 'r1' } as unknown as FireContext;
 
+// Personal profile: V2 moved routine execution into ordinary project automation.
+// Unit; the existing home/paused matrix did not cover Windows platform disabling.
+// Minimal input: an active, locally owned teammate project. No model/script may run.
+it('keeps Personal companion projects and legacy backing schedules inert while ordinary automation runs', async () => {
+  const runner = { fire: vi.fn(async () => ({ sessionId: 'ordinary-task' })) };
+  const guarded = withTeammateHomeGuard(runner, () => [], async dir => dir === project('bot_mia') ? 'active' : null, false);
+  expect(await guarded.fire(schedule(project('bot_mia')), ctx)).toMatchObject({ skipped: true });
+  expect(await guarded.fire({ ...schedule('/work'), source: 'bot' }, ctx)).toMatchObject({ skipped: true });
+  expect(runner.fire).not.toHaveBeenCalled();
+  expect(await guarded.fire(schedule('/work'), ctx)).toEqual({ sessionId: 'ordinary-task' });
+  expect(runner.fire).toHaveBeenCalledTimes(1);
+});
+
 it('skips the automations of a teammate that runs on another computer, and runs them again once it is back', async () => {
   const runner = { fire: vi.fn(async () => ({ sessionId: 'task-1' })) };
   let demoted = ['bot_mia'];
-  const guarded = withTeammateHomeGuard(runner, () => demoted);
+  const guarded = withTeammateHomeGuard(runner, () => demoted, undefined, true);
 
   expect(await guarded.fire(schedule(project('bot_mia')), ctx)).toEqual({ sessionId: '', skipped: true, resultText: expect.any(String) });
   expect(runner.fire).not.toHaveBeenCalled();
@@ -40,7 +53,7 @@ it('skips the automations of a paused or deleted teammate', async () => {
   const states: Record<string, 'active' | 'stopped' | 'deleted'> = {
     [project('bot_mia')]: 'stopped', [project('bot_old')]: 'deleted', [project('bot_leo')]: 'active',
   };
-  const guarded = withTeammateHomeGuard(runner, () => [], async (dir) => states[dir ?? ''] ?? null);
+  const guarded = withTeammateHomeGuard(runner, () => [], async (dir) => states[dir ?? ''] ?? null, true);
 
   expect(await guarded.fire(schedule(project('bot_mia')), ctx)).toMatchObject({ skipped: true });
   expect(await guarded.fire(schedule(project('bot_old')), ctx)).toMatchObject({ skipped: true });

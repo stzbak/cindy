@@ -4,7 +4,8 @@ import { useSelfHostedRelay } from '@/device-link/selfHostedRelay';
 import { subscribeAndroidPushAvailability } from './androidPushAvailability';
 import Notifications from './nativeNotifications';
 import { useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import { isCompanionsEnabled } from '@/config/personalProfile';
 import { useTranslation } from 'react-i18next';
 import { useChatClient } from '@/chat/useChatServer';
 import { ChatNotificationsNative as Native, readChatBackgroundEnabled, subscribeChatBackground } from './chatBackground';
@@ -13,6 +14,7 @@ import { readPushEnabled, readPushPreviewEnabled, subscribePushPreferences } fro
 /** The existing auth owner rotates tokens; Android receives only a current in-memory copy. */
 export function ChatBackgroundBridge() {
   const api = useChatClient();
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
   const auth = useAuth();
   const selfHostedRelay = useSelfHostedRelay() !== null;
   const { t, i18n } = useTranslation();
@@ -35,7 +37,8 @@ export function ChatBackgroundBridge() {
       let lateChat: Promise<{ actor: string; base: string }> | undefined;
       let bindChat: ((chat: { actor: string; base: string }) => Promise<void>) | undefined;
       try {
-        if (!api.enabled) { await native.setIdentity(''); await native.setTaskIdentity?.(''); await native.stop(); return; }
+        // The native service also owns ordinary task delivery. Personal disables only its Chat lane.
+        if (!api.userId || (!api.enabled && companionsEnabled)) { await native.setIdentity(''); await native.setTaskIdentity?.(''); await native.stop(); return; }
         const [enabled, preview] = await Promise.all([readPushEnabled(), readPushPreviewEnabled()]);
         if (cancelled || !api.current()) return;
         if (!enabled || (await Notifications.getPermissionsAsync()).status !== 'granted') {
@@ -52,7 +55,8 @@ export function ChatBackgroundBridge() {
         }
         if (cancelled || !api.current()) return;
         await native.setTaskIdentity?.(api.userId);
-        let actor = knownChat.current.actor; let chatBase = knownChat.current.base;
+        let actor = companionsEnabled ? knownChat.current.actor : '';
+        let chatBase = companionsEnabled ? knownChat.current.base : '';
         const current = () => !cancelled && api.current() && generation === refreshGeneration;
         const configure = async () => {
           const backgroundEnabled = await readChatBackgroundEnabled();
@@ -71,11 +75,12 @@ export function ChatBackgroundBridge() {
             await native.configure(api.owner, actor, chatBase, token, title, stopLabel, preview, i18n.language);
           }
         };
-        if (actor) await native.setIdentity(actor);
+        if (actor || !companionsEnabled) await native.setIdentity(actor);
         // Start the independent task receiver while the Activity is still visible.
         // Chat discovery must not consume Android's foreground-service start window.
         try { await configure(); } catch { /* Chat identity can still enable FCM independently. */ }
         if (!current()) return;
+        if (!companionsEnabled) return;
         bindChat = async chat => {
           if (!current()) return;
           const enabled = await readPushEnabled();
@@ -119,6 +124,6 @@ export function ChatBackgroundBridge() {
     void update();
     // Account changes are fenced by setOwner; retranslation/token refresh must not erase identity.
     return () => { cancelled = true; state.remove(); refresh.remove(); prefs(); availability(); background(); void native.stop(); };
-  }, [api, auth.getAccessToken, selfHostedRelay, t, i18n.language]);
+  }, [api, auth.getAccessToken, companionsEnabled, selfHostedRelay, t, i18n.language]);
   return null;
 }

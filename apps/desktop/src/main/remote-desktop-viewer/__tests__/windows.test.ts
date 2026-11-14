@@ -139,7 +139,7 @@ const call = (channel: string, win: any, ...args: unknown[]) =>
 // prewarm -> open -> handshake must create one usable viewer, with no spare.
 it('opens a viewer on demand with presentation gating and no prewarmed spare', () => {
   const sender: any = { id: 100 };
-  manager = new RemoteDesktopViewerWindows(value => value === sender, false);
+  manager = new RemoteDesktopViewerWindows(value => value === sender, undefined, false);
   manager.register();
   manager.prewarm();
   expect(fixture.windows).toHaveLength(0);
