@@ -58,9 +58,9 @@ Android/Windows build or real-device upgrade and remote-control acceptance.
 
 ## Weekly upstream tracking and stable publication
 
-Owner-authorized weekly maintenance runs locally on **Sin-Arm, Saturday at 07:45
+Owner-authorized weekly maintenance runs locally every **Saturday at 07:45
 Asia/Shanghai**. It records its session, pinned source, candidate and exact Actions
-run in `/root/system/cindy-personal-automation/run-state.json`, with redacted evidence
+run in `run-state.json`, with redacted evidence
 under `runs/<UTC-date>/`. Source work is isolated from the reference checkout.
 The default branch is `personal`. The existing GitHub schedule remains in place
 until the separate migration task completes its final switch; this maintenance
@@ -113,7 +113,7 @@ the Windows packaging child process.
 Android's source-built Agent Net module requires a Rust cross-compiler. Its CI job
 provisions Rust 1.100.0 through rustup verification, all four selected Android
 targets, and cargo-ndk 4.1.2 with its locked registry dependencies. This setup runs
-only on the ephemeral build runner and does not install tools on Sin-Arm.
+only on the ephemeral build runner and does not install tools on the maintenance computer.
 
 ### Versions, source identity and update feeds
 
