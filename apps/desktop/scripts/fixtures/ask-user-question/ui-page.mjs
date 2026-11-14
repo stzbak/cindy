@@ -102,6 +102,13 @@ export default {
     }
     if (ui.case.startsWith('dictation-')) {
       const mic = page.getByTestId('ask-user-voice');
+      if (ui.platform === 'win32') {
+        assert.equal(await mic.count(), 0, 'Personal Windows does not expose composer dictation');
+        await page.getByRole('button', { name: await ui.t('chat.askUserQuestion.customAnswer') }).click();
+        await page.locator('textarea').fill('Personal uses typed answers.');
+        await checkComposer();
+        return;
+      }
       await mic.click();
       await page.waitForFunction(() => document.querySelector('[data-testid="ask-user-voice"]')?.getAttribute('aria-pressed') === 'true');
       if (ui.case !== 'dictation-starting') {
@@ -132,9 +139,13 @@ export default {
       assert.equal(await page.getByTestId('ask-user-voice').count(), 0);
       return;
     }
-    const voiceFrame = await readVoiceFrame();
-    assert.equal(voiceFrame.width, voiceFrame.height);
-    assert.ok(voiceFrame.radius >= voiceFrame.height / 2);
+    if (ui.platform === 'win32') {
+      assert.equal(await page.getByTestId('ask-user-voice').count(), 0, 'Personal Windows has no composer microphone');
+    } else {
+      const voiceFrame = await readVoiceFrame();
+      assert.equal(voiceFrame.width, voiceFrame.height);
+      assert.ok(voiceFrame.radius >= voiceFrame.height / 2);
+    }
     // The free-text badge stays in the option badges' column; the mic sits before it.
     const optionBadgeRight = await page.getByRole('button', { name: /可以，按这版实现/ })
       .evaluate((node) => node.lastElementChild.getBoundingClientRect().right);
@@ -142,18 +153,24 @@ export default {
       const rect = node.getBoundingClientRect();
       return { left: rect.left, right: rect.right };
     });
-    const voiceRight = await page.getByTestId('ask-user-voice').evaluate((node) => node.getBoundingClientRect().right);
     assert.ok(Math.abs(customBadge.right - optionBadgeRight) < 0.5, `badge column ${customBadge.right} vs ${optionBadgeRight}`);
-    assert.ok(voiceRight <= customBadge.left, 'Microphone sits before the free-text badge');
+    if (ui.platform !== 'win32') {
+      const voiceRight = await page.getByTestId('ask-user-voice').evaluate((node) => node.getBoundingClientRect().right);
+      assert.ok(voiceRight <= customBadge.left, 'Microphone sits before the free-text badge');
+    }
     if (ui.case !== 'unresolved') await page.getByRole('link', { name: 'sidebar-layout-v1.html' }).waitFor();
     assert.equal(await page.getByRole('link').count(), ui.case === 'unresolved' ? 0 : 2);
     if (ui.case !== 'unresolved') {
       assert.equal(await page.getByRole('link', { name: 'sidebar-layout-v1.html' }).evaluate((node) => getComputedStyle(node).textDecorationLine), 'underline');
     }
     await page.getByRole('button', { name: await ui.t('chat.askUserQuestion.customAnswer') }).click();
-    const expandedFrame = await readVoiceFrame();
-    assert.equal(expandedFrame.width, 32);
-    assert.equal(expandedFrame.height, 32);
-    assert.ok(expandedFrame.radius >= 16, 'Expanded microphone action frame follows the same pill tier');
+    if (ui.platform === 'win32') {
+      assert.equal(await page.getByTestId('ask-user-voice').count(), 0, 'Expanding a typed answer does not restore the microphone');
+    } else {
+      const expandedFrame = await readVoiceFrame();
+      assert.equal(expandedFrame.width, 32);
+      assert.equal(expandedFrame.height, 32);
+      assert.ok(expandedFrame.radius >= 16, 'Expanded microphone action frame follows the same pill tier');
+    }
   },
 };
