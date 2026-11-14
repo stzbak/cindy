@@ -363,6 +363,29 @@ describe('agent-facing managed app update check', () => {
     }
   });
 
+  // Personal build identity must not suppress upstream version-based auth migration.
+  // Unit: existing relogin coverage only exercised the official buildNumber=0 path.
+  it.each([['0.1.122', true], ['0.1.121', false]] as const)('preserves relogin semantics for Personal version %s', async (version, required) => {
+    personalBuild.value = 200001;
+    appGetVersion.mockReturnValue('0.1.121');
+    fetchManifest.mockResolvedValue({ app: { version, personalBuildNumber: 200002, requireRelogin: true, hotfix: {
+      file: 'https://github.com/stzbak/cindy/releases/download/test/app-200002.zip', sha256: 'a'.repeat(64), size: 6,
+    } } });
+    download.mockImplementation(async ({ targetPath }: { targetPath: string }) => {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, 'update');
+      return { path: targetPath, size: 6 };
+    });
+    const service = await freshUpdateService('win32');
+    try {
+      await expect(service.checkForUpdate()).resolves.toBe('ready');
+      const info = JSON.parse(fs.readFileSync(path.join(TEST_USER_DATA, 'updates', 'patch-info.json'), 'utf8'));
+      expect(info.requireRelogin).toBe(required);
+      expect(fs.existsSync(path.join(TEST_USER_DATA, 'relogin-required.flag'))).toBe(required);
+      if (required) expect(await service.checkAppUpdateForAgent()).toMatchObject({ status: 'ready' });
+    } finally { service.stopUpdateService(); }
+  });
+
   it('stages same-version Personal rebuilds, supersedes by build identity, and cleans applied builds after restart', async () => {
     personalBuild.value = 200001;
     appGetVersion.mockReturnValue('0.1.121');
