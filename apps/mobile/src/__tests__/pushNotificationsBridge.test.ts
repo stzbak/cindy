@@ -23,7 +23,7 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/', useGlobalSearchParams: () => ({}) }));
-vi.mock('react-native', () => ({ AppState: { addEventListener: (_: string, listener: (state: string) => void) => {
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, AppState: { addEventListener: (_: string, listener: (state: string) => void) => {
   state.foregroundListeners.add(listener); return { remove() { state.foregroundListeners.delete(listener); } };
 } } }));
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => state.auth }));
