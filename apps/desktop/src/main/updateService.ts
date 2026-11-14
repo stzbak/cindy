@@ -49,7 +49,8 @@ import { isRunningUnderArm64Translation } from './arm64Translation';
 import type { Manifest } from './manifestService';
 import { download, DownloadError } from './downloader/index';
 import { ProgressNormalizer } from './updateProgressNormalizer';
-import { comparePersonalAppUpdateVersions as compareAppUpdateVersions, appUpdateDownloadUrl } from './personalAppUpdate';
+import { compareAppUpdateVersions } from './updateVersionPolicy';
+import { comparePersonalAppUpdateVersions, appUpdateDownloadUrl } from './personalAppUpdate';
 import { CURRENT_APP_ID } from '../shared/brandRegion';
 import { syncWindowsVersionAfterUpdate, windowsInstallKey } from './windowsInstallationVersion';
 import { writeStartupBinaryUpdateMarker } from './agent-binaries/startup-update';
@@ -158,7 +159,7 @@ interface PatchInfo {
  * 再移入新 .app，不会残留 x64 文件。其它任何同版本、旧版本都沿用原拒绝。
  */
 function appUpdateRelation(version: unknown, targetArch: string | undefined, targetBuild?: number) {
-  const relation = compareAppUpdateVersions(version, app.getVersion(), targetBuild);
+  const relation = comparePersonalAppUpdateVersions(version, app.getVersion(), targetBuild);
   if (
     relation === 'same'
     && targetArch === 'arm64'
@@ -2234,7 +2235,7 @@ export async function checkAppUpdateForAgent(): Promise<{
   // the user can download and install through the built-in update action.
   const manifest = await fetchAppUpdateManifest();
   if (!manifest) return { status: 'manifest_failed', currentVersion, reason: '无法读取当前渠道的更新信息。' };
-  const relation = compareAppUpdateVersions(manifest.app?.version, currentVersion, manifest.app?.personalBuildNumber);
+  const relation = comparePersonalAppUpdateVersions(manifest.app?.version, currentVersion, manifest.app?.personalBuildNumber);
   if (relation === 'invalid') return {
     status: 'manifest_failed', currentVersion, reason: '当前渠道的更新版本信息无效。',
   };

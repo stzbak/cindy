@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/', useGlobalSearchParams: () => ({}) }));
-vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove() {} }) } }));
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, AppState: { addEventListener: () => ({ remove() {} }) } }));
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => state.auth }));
 vi.mock('@/device-link/selfHostedRelay', () => ({ useSelfHostedRelay: () => null }));
 vi.mock('@/notifications/NotificationReconciliationBridge', () => ({ NotificationReconciliationBridge: () => null }));

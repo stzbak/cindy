@@ -16,6 +16,7 @@ When syncing upstream, fetch official `main` and rebase `personal` onto it. Keep
 
 - Windows keeps the companion database, historical sessions, shared protocol types, and ordinary Agent/MCP/device-link features. The personal profile hides the companion navigation, settings, delegation targets, call controls, and old `/bots/*` deep links, while stopping companion autonomy, companion-owned IM connections, group/cloud hosts, routine dispatch, and companion-only tools.
 - Android keeps ordinary tasks, remote control, notifications, attachments, automation, and the protected MCP surface. The personal profile hides the home companion section and companion filters, redirects old companion routes, disables companion task reads and Chat Server polling, and ignores companion group notification targets. Ordinary task notifications and `/sessions/*` links remain active.
+- Android's shared native notification service keeps its ordinary task identity and background mode controls. Personal clears only its companion identity and skips Chat Server discovery; disabling companions must not stop ordinary task delivery.
 - Linux desktop and iOS continue to use upstream behavior. Database tables, migrations, persisted rows, shared components, and server contracts stay in place so this fork can track upstream releases with small call-site patches.
 
 The intended boundary is: hide every personal-client entry point, stop background work that would otherwise consume resources or contact companion services, and leave inert code and persisted data intact.
@@ -35,6 +36,9 @@ only the platform gate. In particular:
   schedules are suppressed; startup wiring tests exercise both profile states.
 - Remote desktop keeps upstream account capabilities, authorization and cold-open
   readiness. Windows disables spare-window prewarming, not viewer opening.
+- Updates keep upstream version-based relogin migration and Agent staged-update
+  reporting. Personal build-number checks apply to package identity; they must not
+  replace version-only authentication decisions.
 - Full-window companion read-state sync, roster hooks and the group outbox are
   gated in `AppWindowSync`; task attention still mounts in the main window. Keep
   upstream account-generation boundaries and secondary-window ownership intact.
@@ -49,18 +53,25 @@ Android/Windows build or real-device upgrade and remote-control acceptance.
 
 - Resource monitor, remote desktop viewer, sidebar pop-outs and the global voice overlay are created on demand. Startup prewarm and unused spare replenishment are disabled only on Windows. Existing ready/presented handshakes, permissions, reuse and recovery remain; the first open can take longer. This is the owner's explicit Personal exception to the upstream auxiliary-window prewarm baseline.
 - Personal IM bots and official Hook chat ingress are hidden from settings (including old deep links), with IPC registration, orchestrator setup and account connection disabled. Independent enterprise WeChat/ntfy notifications, ordinary task notifications, scheduler and device-link remain available. Saved IM credentials and histories stay intact.
-- Companion routine startup does not create an engine or a one-second tick timer, including lazy callers. A one-shot owner-scoped compatibility pass pauses backing schedules for saved routines without rewriting or deleting their rules/history. Ordinary schedules are unaffected.
+- Upstream V2 removed the companion routine/autonomy engines. Windows does not start the V2 teammate migration or companion import recovery; existing V1 definitions/history remain intact. The existing scheduler home guard also skips legacy companion backing schedules and verified companion-owned project automations on Windows, without blocking ordinary project schedules. Linux keeps upstream migration and automation behavior.
 - macOS and Linux retain upstream behavior. These gates reduce runtime work; they do not remove bundled SDKs or claim a measured installer-size or memory saving.
 
 ## Weekly upstream tracking and stable publication
 
-GitHub Actions runs `personal-upstream.yml` each **Saturday at 07:45
-Asia/Singapore** (Friday 23:45 UTC; cron `45 23 * * 5`). The default branch is
-`personal`. GitHub may delay scheduled starts; manual dispatch remains available.
+Owner-authorized weekly maintenance runs locally on **Sin-Arm, Saturday at 07:45
+Asia/Shanghai**. It records its session, pinned source, candidate and exact Actions
+run in `/root/system/cindy-personal-automation/run-state.json`, with redacted evidence
+under `runs/<UTC-date>/`. Source work is isolated from the reference checkout.
+The default branch is `personal`. The existing GitHub schedule remains in place
+until the separate migration task completes its final switch; this maintenance
+does not disable it or alter other automation.
 
 1. Fetch official main and rebase the small Personal commit stack.
-2. Put changes on isolated `automation/upstream-sync-staging`. A conflict aborts
-   the rebase and reports an issue without changing Personal or the latest release.
+2. Resolve unambiguous upstream/Personal conflicts in the isolated checkout,
+   preserving upstream behavior around the smallest Personal gates. Preserve a
+   recovery point and stop if a new product decision cannot be proven correct.
+   Push the validated candidate to `automation/upstream-sync-staging` using an
+   exact lease; neither Personal nor the latest release changes at this point.
 3. Explicitly dispatch the unified `personal-release.yml` pipeline, because
    built-in token pushes do not trigger ordinary push workflows.
 4. Pin the source SHA, current public official Windows/Android versions, and an
@@ -79,11 +90,13 @@ Asia/Singapore** (Friday 23:45 UTC; cron `45 23 * * 5`). The default branch is
 Automatic promotion and publication are owner-authorized. There is no routine
 manual-merge gate. If publication fails after promotion, the prior branch state is
 in the backup ref and the old stable release remains live; fix and dispatch again.
-Actions uses the repository-scoped built-in token, with contents/actions/issues
-permissions as required. No personal access token or external scheduler is needed.
-GitHub may disable schedules on inactive public forks; check Actions if no weekly
-run appears. Failures create GitHub issues; delivery depends on GitHub notification
-settings.
+Local maintenance uses the existing Personal GitHub account and dedicated SSH key;
+credentials never enter source or evidence. The existing Actions build/publish
+workflow uses its repository-scoped built-in token and existing signing secrets.
+An already dispatched build is followed by exact run ID rather than dispatched
+again. Releases, failures and blockers notify the current local schedule run;
+successful no-change checks remain silent. Device installation is separate from
+CI and downloaded-asset checksum verification.
 
 Build jobs prefetch pinned official build tools through GitHub's asset API to
 avoid release-web HTTP 5xx failures. Archives must match the publisher/registry

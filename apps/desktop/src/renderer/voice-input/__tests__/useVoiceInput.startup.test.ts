@@ -410,6 +410,8 @@ describe('local voice capture independent of startup checks and cloud', () => {
     expect(mocks.stopEngine).toHaveBeenCalled();
     h.unmount();
     expect(h.api.cancel).toHaveBeenCalledTimes(1);
+  });
+
   it('does not prewarm or start when the personal profile disables composer voice', () => {
     const h = mount(true);
     expect(h.api.prewarm).not.toHaveBeenCalled();

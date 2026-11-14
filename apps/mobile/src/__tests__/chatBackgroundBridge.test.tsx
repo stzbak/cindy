@@ -3,7 +3,7 @@
 // restart delivery after sign-out. The old bridge only configured a chat socket and had no task path.
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ current: true, enabled: true, permission: 'granted', background: true,
+const state = vi.hoisted(() => ({ current: true, enabled: true, permission: 'granted', background: true, platform: 'ios',
   me: vi.fn(), token: vi.fn(async () => 'token'), signedOut: undefined as undefined | ((out?: boolean) => void) }));
 const native = vi.hoisted(() => ({ stop: vi.fn(), setOwner: vi.fn(), setIdentity: vi.fn(), setTaskIdentity: vi.fn(), setPreview: vi.fn(),
   configureNotifications: vi.fn(), configure: vi.fn(), addListener: vi.fn(() => ({ remove: vi.fn() })) }));
@@ -14,7 +14,7 @@ vi.mock('@/config/env', () => ({ getMobileEndpointForRealm: () => 'https://relay
 vi.mock('@/device-link/selfHostedRelay', () => ({ useSelfHostedRelay: () => null }));
 vi.mock('@/chat/useChatServer', () => ({ useChatClient: () => api }));
 vi.mock('react-i18next', () => { const t = (key: string) => key; return { useTranslation: () => ({ t, i18n: { language: 'en' } }) }; });
-vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove() {} }) } }));
+vi.mock('react-native', () => ({ Platform: { get OS() { return state.platform; } }, AppState: { addEventListener: () => ({ remove() {} }) } }));
 vi.mock('../notifications/nativeNotifications', () => ({ default: { getPermissionsAsync: async () => ({ status: state.permission }) } }));
 vi.mock('../notifications/chatBackground', () => ({ ChatNotificationsNative: native,
   readChatBackgroundEnabled: async () => state.background, subscribeChatBackground: () => () => {} }));
@@ -25,12 +25,27 @@ import { ChatBackgroundBridge } from '../notifications/ChatBackgroundBridge';
 
 beforeEach(() => {
   vi.clearAllMocks(); state.current = true; state.enabled = true; state.permission = 'granted'; state.background = true;
+  state.platform = 'ios'; api.enabled = true;
   native.configureNotifications.mockReset();
   state.me.mockResolvedValue('actor');
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('background notification lifecycle', () => {
+  // Personal Android must retain ordinary task notifications while Chat Server is disabled.
+  // Unit: the existing chat-offline test still had api.enabled=true, missing the platform gate.
+  // Minimal input: authenticated Android, granted push, api.enabled=false. No Chat lookup is allowed.
+  it('keeps Android Personal task delivery while companion discovery stays disabled', async () => {
+    state.platform = 'android'; api.enabled = false;
+    renderHook(() => ChatBackgroundBridge());
+    await act(async () => {});
+    expect(native.configureNotifications).toHaveBeenCalledWith(expect.objectContaining({
+      actor: '', chatBase: '', user: api.userId, taskBase: 'https://relay.example',
+    }));
+    expect(native.setTaskIdentity).toHaveBeenCalledWith(api.userId);
+    expect(native.setIdentity).toHaveBeenCalledWith('');
+    expect(state.me).not.toHaveBeenCalled();
+  });
   // Unit regression r4512690973: a cold native service can only start while the
   // Activity has focus. /me still pending when Home is pressed must not delay tasks.
   // Earlier deadline tests only checked configuration after 8s, missing first startup.

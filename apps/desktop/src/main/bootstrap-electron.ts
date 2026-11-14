@@ -1727,13 +1727,15 @@ async function attemptStartSchedulerOnce(): Promise<void> {
     }
     // Teammates become projects (V2): needs the scheduler for their automations. Once per
     // teammate (receipt); runs in the background and never blocks startup.
-    void import('./maker-ipc/botV2Migration.js')
-      .then(({ migrateTeammatesToV2 }) => migrateTeammatesToV2())
-      .catch(error => console.warn('[bootstrap-electron] teammate V2 upgrade not started', error));
-    // Resume a companion import interrupted by a restart; never blocks startup.
-    void import('./bot-import/host.js')
-      .then(({ recoverCompanionImports }) => recoverCompanionImports())
-      .catch(error => console.warn('[bootstrap-electron] companion import recovery not started', error));
+    if (isCompanionsEnabled(process.platform)) {
+      void import('./maker-ipc/botV2Migration.js')
+        .then(({ migrateTeammatesToV2 }) => migrateTeammatesToV2())
+        .catch(error => console.warn('[bootstrap-electron] teammate V2 upgrade not started', error));
+      // Resume a companion import interrupted by a restart; never blocks startup.
+      void import('./bot-import/host.js')
+        .then(({ recoverCompanionImports }) => recoverCompanionImports())
+        .catch(error => console.warn('[bootstrap-electron] companion import recovery not started', error));
+    }
   } catch (err) {
     console.error('[bootstrap-electron] startScheduler failed (non-fatal):', err);
   }

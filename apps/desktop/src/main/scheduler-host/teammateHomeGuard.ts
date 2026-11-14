@@ -8,6 +8,7 @@ import type { ScheduleRunner } from '@cindy/maker-scheduler';
 import { teammateFolderName, teammateFolderOfProjectPath } from '@cindy/maker-shared/teammate-project';
 
 import type { TeammateProjectState } from './ownTeammateProject.js';
+import { isCompanionsEnabled } from '../../shared/personalProfile.js';
 
 /** The teammate whose project `workingDir` is runs on another computer now. */
 export function isTeammateProjectElsewhere(workingDir: string | null | undefined, demotedBotIds: readonly string[]): boolean {
@@ -17,14 +18,18 @@ export function isTeammateProjectElsewhere(workingDir: string | null | undefined
 
 /** Every scheduled run (agent or script) in such a project is recorded as skipped. */
 export function withTeammateHomeGuard(runner: ScheduleRunner, demotedBotIds: () => readonly string[],
-  teammateState: (workingDir: string | null | undefined) => Promise<TeammateProjectState | null> = async () => null): ScheduleRunner {
+  teammateState: (workingDir: string | null | undefined) => Promise<TeammateProjectState | null> = async () => null,
+  companionsEnabled = isCompanionsEnabled(process.platform)): ScheduleRunner {
   const skip = (resultText: string) => ({ sessionId: '', skipped: true, resultText });
   return {
     fire: async (schedule, ctx) => {
+      // Legacy backing schedules stay inert without reviving the removed V1 engine.
+      if (!companionsEnabled && schedule.source === 'bot') return skip('Skipped: Personal companion runtime is disabled');
       if (isTeammateProjectElsewhere(schedule.workingDir, demotedBotIds())) {
         return skip('Skipped: this buddy runs on another computer now');
       }
       const state = teammateFolderOfProjectPath(schedule.workingDir) ? await teammateState(schedule.workingDir) : null;
+      if (!companionsEnabled && state !== null) return skip('Skipped: Personal companion runtime is disabled');
       if (state === 'stopped') return skip('Skipped: this buddy is paused');
       if (state === 'deleted') return skip('Skipped: this buddy was deleted');
       return runner.fire(schedule, ctx);
