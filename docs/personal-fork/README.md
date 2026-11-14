@@ -110,6 +110,11 @@ generated native projects, runtime downloads or app update feeds. Missing or
 mismatched checksums fail the build; the built-in GitHub token is not passed to
 the Windows packaging child process.
 
+Android's source-built Agent Net module requires a Rust cross-compiler. Its CI job
+provisions Rust 1.100.0 through rustup verification, all four selected Android
+targets, and cargo-ndk 4.1.2 with its locked registry dependencies. This setup runs
+only on the ephemeral build runner and does not install tools on Sin-Arm.
+
 ### Versions, source identity and update feeds
 
 Displayed versions come from the public official CN feeds in `config/endpoint.json`.
