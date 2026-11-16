@@ -24,6 +24,9 @@ class CindyChatNotificationsModule : Module() {
     AsyncFunction("resume") {
       appContext.reactContext?.getSharedPreferences("cindy-chat-background", android.content.Context.MODE_PRIVATE)?.edit()?.putBoolean("paused", false)?.apply()
     }
+    AsyncFunction("getDiagnostics") {
+      ChatDiagnostics.snapshot() + mapOf("serviceRunning" to ChatConnectionService.running)
+    }
     OnCreate { ChatConnectionService.refreshRequested = { sendEvent("refreshRequested") } }
     OnDestroy { ChatConnectionService.refreshRequested = null }
     AsyncFunction("setIdentity") { actor: String ->
