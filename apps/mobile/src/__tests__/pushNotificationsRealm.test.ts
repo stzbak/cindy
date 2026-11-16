@@ -238,6 +238,29 @@ describe('push notification realm routing', () => {
     expect(mocks.setBadgeCountAsync).not.toHaveBeenCalled();
   });
 
+  // 测试价值
+  // - 生产入口与可观察结果：configureForegroundNotificationBehavior 在 Android 上收到 /sessions/ 任务提醒时，
+  //   未正在阅读该会话应返回 shouldShowBanner: true 与 shouldPlaySound: true；正在阅读时压制。
+  // - Bug／规则依据：upstream #9494 / #9405 / #7797 / PR #7405（Android 常驻进程下原代码对 /sessions/ 永远返回 false）。
+  // - 现有覆盖缺口：上方用例仅在 iOS 平台断言 shouldShowBanner: false，未覆盖 Android。
+  // - 最小失败输入：Platform.OS='android'，deepLink='/sessions/task'（旧逻辑 shouldShowBanner=false）。
+  // - tier：unit（内存 mock，无原生 I/O）。
+  it('shows banner and plays sound on Android for unread /sessions/ notifications unless actively reading', async () => {
+    envState.platform = 'android';
+    store.set('cindy.push.enabled', '1');
+    let reading = false;
+    configureForegroundNotificationBehavior(() => reading);
+    const handler = mocks.setNotificationHandler.mock.calls.at(-1)![0];
+    const notification = { request: { content: { data: { deepLink: '/sessions/task?deviceId=d1' } } } };
+    expect(await handler.handleNotification(notification)).toEqual({
+      shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false,
+    });
+    reading = true;
+    expect(await handler.handleNotification(notification)).toEqual({
+      shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false,
+    });
+  });
+
   // #10113 + #9547 merge: preserve local action-failure alerts alongside badge
   // push preferences. Existing tray tests cover ordinary pushes, not failed
   // replies while push is disabled. Unit, real foreground handler; no native IO.

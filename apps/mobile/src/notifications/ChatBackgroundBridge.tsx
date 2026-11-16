@@ -8,6 +8,7 @@ import { AppState, Platform } from 'react-native';
 import { isCompanionsEnabled } from '@/config/personalProfile';
 import { useTranslation } from 'react-i18next';
 import { useChatClient } from '@/chat/useChatServer';
+import { mobileDebugEnabled, mobileDebugLog } from '@/debug/mobileDebugLog';
 import { ChatNotificationsNative as Native, readChatBackgroundEnabled, subscribeChatBackground } from './chatBackground';
 import { readPushEnabled, readPushPreviewEnabled, subscribePushPreferences } from './pushNotifications';
 
@@ -78,7 +79,7 @@ export function ChatBackgroundBridge() {
         if (actor || !companionsEnabled) await native.setIdentity(actor);
         // Start the independent task receiver while the Activity is still visible.
         // Chat discovery must not consume Android's foreground-service start window.
-        try { await configure(); } catch { /* Chat identity can still enable FCM independently. */ }
+        try { await configure(); } catch { mobileDebugLog('warn', 'lifecycle', 'background notification configure failed'); }
         if (!current()) return;
         if (!companionsEnabled) return;
         bindChat = async chat => {
@@ -105,15 +106,23 @@ export function ChatBackgroundBridge() {
           await bindChat(chat);
         } catch { /* Independent service. */ }
         finally { clearTimeout(chatTimeout); }
-      } catch { /* Foreground and the service's next token refresh retry transient failures. */ }
+      } catch { mobileDebugLog('warn', 'lifecycle', 'background notification update failed'); }
       finally {
         // Off/FCM-only modes have no service refresh loop to recover a late lookup.
         if (lateChat && bindChat) void lateChat.then(bindChat).catch(() => { /* Keep the last verified identity. */ });
+        if (!cancelled && mobileDebugEnabled() && native.getDiagnostics) {
+          void native.getDiagnostics().then(diag => {
+            if (!cancelled) mobileDebugLog('info', 'lifecycle', 'background notification diagnostics', diag);
+          }).catch(() => {});
+        }
         refreshing = false;
         if (requested) { requested = false; void update(); }
       }
     };
     const state = AppState.addEventListener('change', value => { if (value === 'active') void update(); });
+    // Android can become active before its window has focus. The native service
+    // requires a focused activity to start; retry on the actual focus event.
+    const focus = AppState.addEventListener('focus', () => { void update(); });
     const refresh = native.addListener('refreshRequested', () => { void update(); });
     const prefs = subscribePushPreferences(signedOut => {
       if (signedOut) { cancelled = true; void native.setIdentity(''); void native.setTaskIdentity?.(''); void native.stop(); }
@@ -123,7 +132,7 @@ export function ChatBackgroundBridge() {
     const background = subscribeChatBackground(() => { void update(); });
     void update();
     // Account changes are fenced by setOwner; retranslation/token refresh must not erase identity.
-    return () => { cancelled = true; state.remove(); refresh.remove(); prefs(); availability(); background(); void native.stop(); };
+    return () => { cancelled = true; state.remove(); focus.remove(); refresh.remove(); prefs(); availability(); background(); void native.stop(); };
   }, [api, auth.getAccessToken, companionsEnabled, selfHostedRelay, t, i18n.language]);
   return null;
 }
