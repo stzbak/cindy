@@ -38,6 +38,7 @@ internal class TaskNotificationConnection(private val context: Context) {
     var retry = 1000L
     while (current(config)) {
       try {
+        ChatDiagnostics.setSseState("connecting")
         val query = okhttp3.HttpUrl.Builder().scheme("https").host("cursor.invalid")
           .addQueryParameter("preview", if (config.preview) "1" else "0")
         if (cursor.matches(Regex("[0-9]{1,16}-[0-9]{1,10}"))) query.addQueryParameter("after", cursor)
@@ -46,10 +47,12 @@ internal class TaskNotificationConnection(private val context: Context) {
         val next = http.newCall(request); call = next
         if (!current(config)) { next.cancel(); return }
         next.execute().use { response ->
+          ChatDiagnostics.recordHttpStatus(response.code)
           if (response.code == 401) ChatConnectionService.refreshRequested?.invoke()
           if (response.code in listOf(403, 404, 405, 429)) retry = 60_000
           check(response.isSuccessful) { "TASK_NOTIFICATION_STREAM_UNAVAILABLE" }
           check(response.header("Content-Type")?.startsWith("text/event-stream") == true)
+          ChatDiagnostics.setSseState("connected")
           val source = response.body?.source() ?: return
           var id = ""; var event = ""; var data = ""
           while (current(config) && !source.exhausted()) {
@@ -62,11 +65,14 @@ internal class TaskNotificationConnection(private val context: Context) {
               line.isEmpty() -> {
                 if (!current(config)) return
                 if (event == "notification") {
+                  ChatDiagnostics.recordSseEvent()
                   val payload = JSONObject(data)
                   check(payload.optString("recipientId") == config.taskUser)
                   if (!config.preview) { payload.remove("body"); payload.remove("sender"); payload.remove("senderName") }
-                  ChatDelivery.receive(context, mapOf("tag" to payload.getString("collapseId"),
-                    "title" to payload.getString("title"), "message" to payload.optString("body"),
+                  val tag = payload.optString("collapseId").ifEmpty { payload.optString("notificationId") }
+                  val title = payload.optString("title", "Cindy").ifEmpty { "Cindy" }
+                  ChatDelivery.receive(context, mapOf("tag" to tag,
+                    "title" to title, "message" to payload.optString("body"),
                     "body" to payload.toString(), "channelId" to "chat-messages"))
                 }
                 if (id.matches(Regex("[0-9]{1,16}-[0-9]{1,10}")) && event in listOf("notification", "cursor")) {
@@ -78,7 +84,9 @@ internal class TaskNotificationConnection(private val context: Context) {
             }
           }
         }
-      } catch (_: Exception) { /* The bounded retry retains the cursor for replay. */ }
+      } catch (error: Exception) {
+        if (current(config)) ChatDiagnostics.recordSseException(error.javaClass.simpleName.ifEmpty { "Exception" })
+      }
       if (!current(config)) return
       try { synchronized(wake) { if (current(config)) wake.wait(retry + (Math.random() * 1000).toLong()) } } catch (_: InterruptedException) { return }
       retry = minOf(retry * 2, 60_000)
