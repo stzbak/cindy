@@ -1,31 +1,60 @@
 package app.cindy.notifications
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.os.Build
+import android.os.Parcel
+import android.os.Parcelable
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.graphics.drawable.IconCompat
 import com.google.firebase.messaging.RemoteMessage
+import expo.modules.notifications.notifications.interfaces.INotificationContent
+import expo.modules.notifications.notifications.model.Notification
+import expo.modules.notifications.notifications.model.NotificationBehaviorRecord
+import expo.modules.notifications.notifications.model.NotificationRequest
+import expo.modules.notifications.notifications.model.RemoteNotificationContent
+import expo.modules.notifications.notifications.model.triggers.FirebaseNotificationTrigger
 import expo.modules.notifications.service.ExpoFirebaseMessagingService
 import expo.modules.notifications.service.NotificationsService
 import expo.modules.notifications.service.delegates.ExpoPresentationDelegate
 import expo.modules.notifications.service.delegates.FirebaseMessagingDelegate
 import expo.modules.notifications.service.interfaces.PresentationDelegate
-import expo.modules.notifications.notifications.model.Notification
-import expo.modules.notifications.notifications.model.NotificationBehaviorRecord
 import org.json.JSONArray
 import org.json.JSONObject
+
+private val VISIBLE_CATEGORIES = setOf("chat-message", "session-done", "session-error", "session-needs-reply")
 
 /** Only account/actor/message IDs persist. Credentials and notification bodies never enter this store. */
 object ChatDelivery {
   private const val STORE = "cindy-chat-notification-ids"
+  private const val CHANNEL_ID = "chat-messages"
+
+  private fun ensureNotificationChannel(context: Context) {
+    if (Build.VERSION.SDK_INT < 26) return
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return
+    if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+      manager.createNotificationChannel(
+        NotificationChannel(CHANNEL_ID, "Cindy", NotificationManager.IMPORTANCE_HIGH).apply {
+          lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
+          setShowBadge(true)
+        }
+      )
+    }
+  }
+
   @Synchronized fun owner(context: Context, owner: String) {
     val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
-    if (prefs.getString("owner", "") != owner) prefs.edit().clear().putString("owner", owner).apply()
+    if (prefs.getString("owner", "") != owner) {
+      ChatDiagnostics.reset()
+      prefs.edit().clear().putString("owner", owner).apply()
+    }
   }
   @Synchronized fun identity(context: Context, actor: String) {
     val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
@@ -36,10 +65,13 @@ object ChatDelivery {
   }
   @Synchronized fun taskIdentity(context: Context, user: String) {
     val prefs = context.getSharedPreferences("cindy-task-notification-ids", Context.MODE_PRIVATE)
-    if (prefs.getString("user", "") != user) prefs.edit().clear().putString("user", user).apply()
+    if (prefs.getString("user", "") != user) {
+      ChatDiagnostics.reset()
+      prefs.edit().clear().putString("user", user).apply()
+    }
   }
   @Synchronized fun receive(context: Context, data: Map<String, String>) {
-    var body = try { JSONObject(data["body"] ?: "{}") } catch (_: Exception) { return }
+    var body = try { JSONObject(data["body"] ?: "{}") } catch (_: Exception) { ChatDiagnostics.count("invalid"); return }
     val display = data.toMutableMap()
     if (body.optString("deepLink").startsWith("cindy://agent-net-notification")) {
       // Optional native module: old installations continue their existing notification path.
@@ -48,7 +80,7 @@ object ChatDelivery {
         Class.forName("app.cindy.agentnet.AgentNetNotifications")
           .getMethod("open", Context::class.java, String::class.java).invoke(null, context, body.getString("deepLink")) as? String
       } catch (_: Exception) { null } ?: return
-      body = try { JSONObject(decoded) } catch (_: Exception) { return }
+      body = try { JSONObject(decoded) } catch (_: Exception) { ChatDiagnostics.count("invalid"); return }
       display["title"] = body.optString("title", "Cindy")
       display["message"] = body.optString("body")
       display["tag"] = body.optString("collapseId")
@@ -60,11 +92,11 @@ object ChatDelivery {
     if (body.optString("category") == "chat-message") {
       val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
       val actor = prefs.getString("actor", "") ?: ""
-      if (actor.isEmpty() || body.optString("recipientId") != actor) return
-      val id = data["tag"] ?: return
-      if (!id.matches(Regex("[a-fA-F0-9-]{36}"))) return
+      if (actor.isEmpty() || body.optString("recipientId") != actor) { ChatDiagnostics.count("wrongRecipient"); return }
+      val id = data["tag"] ?: ""
+      if (!id.matches(Regex("[a-fA-F0-9-]{36}"))) { ChatDiagnostics.count("invalid"); return }
       val ids = try { JSONArray(prefs.getString("ids", "[]")) } catch (_: Exception) { JSONArray() }
-      if ((0 until ids.length()).any { ids.optString(it) == id }) return
+      if ((0 until ids.length()).any { ids.optString(it) == id }) { ChatDiagnostics.count("duplicates"); return }
       val next = JSONArray()
       for (i in maxOf(0, ids.length() - 255) until ids.length()) next.put(ids.getString(i))
       next.put(id)
@@ -73,12 +105,12 @@ object ChatDelivery {
     if (body.optString("category") in listOf("session-done", "session-error", "session-needs-reply")) {
       val prefs = context.getSharedPreferences("cindy-task-notification-ids", Context.MODE_PRIVATE)
       val user = prefs.getString("user", "") ?: ""
-      if (body.has("recipientId") && (user.isEmpty() || body.optString("recipientId") != user)) return
+      if (body.has("recipientId") && (user.isEmpty() || body.optString("recipientId") != user)) { ChatDiagnostics.count("wrongRecipient"); return }
       val id = body.optString("notificationId")
       if (id.isNotEmpty()) {
-        if (!id.matches(Regex("[a-fA-F0-9-]{36}"))) return
+        if (!id.matches(Regex("[a-fA-F0-9-]{36}"))) { ChatDiagnostics.count("invalid"); return }
         val ids = try { JSONArray(prefs.getString("ids", "[]")) } catch (_: Exception) { JSONArray() }
-        if ((0 until ids.length()).any { ids.optString(it) == id }) return
+        if ((0 until ids.length()).any { ids.optString(it) == id }) { ChatDiagnostics.count("duplicates"); return }
         val next = JSONArray()
         for (i in maxOf(0, ids.length() - 255) until ids.length()) next.put(ids.getString(i))
         next.put(id); prefs.edit().putString("ids", next.toString()).apply()
@@ -94,7 +126,38 @@ object ChatDelivery {
       body.remove("sender"); body.remove("senderName"); body.remove("body")
       display["body"] = body.toString(); display["message"] = ""
     }
-    FirebaseMessagingDelegate(context).onMessageReceived(RemoteMessage.Builder("cindy").setData(display).build())
+    ensureNotificationChannel(context)
+    ChatDiagnostics.count("dispatched")
+    ChatMessagingDelegate(context).onMessageReceived(RemoteMessage.Builder("cindy").setData(display).build())
+  }
+}
+
+/**
+ * These authenticated inbox/SSE/FCM payloads are visible notifications, not silent data tasks.
+ * Expo intentionally skips RemoteNotificationContent.isDataOnly in its foreground handler.
+ * Wrapping visible categories ensures Expo routes them through ChatNotificationsService & JS behavior.
+ */
+internal class ChatMessagingDelegate(context: Context) : FirebaseMessagingDelegate(context) {
+  override fun createNotificationRequest(
+    identifier: String,
+    content: INotificationContent,
+    notificationTrigger: FirebaseNotificationTrigger,
+  ): NotificationRequest {
+    val category = content.body?.optString("category")
+    val visible = if (content is RemoteNotificationContent && content.isDataOnly && category in VISIBLE_CATEGORIES)
+      ChatNotificationContent(content) else content
+    return super.createNotificationRequest(identifier, visible, notificationTrigger)
+  }
+}
+
+internal class ChatNotificationContent(private val source: RemoteNotificationContent) : INotificationContent by source {
+  override fun writeToParcel(destination: Parcel, flags: Int) { destination.writeParcelable(source, flags) }
+  companion object {
+    @JvmField val CREATOR: Parcelable.Creator<ChatNotificationContent> = object : Parcelable.Creator<ChatNotificationContent> {
+      override fun createFromParcel(source: Parcel) = ChatNotificationContent(
+        requireNotNull(source.readParcelable<RemoteNotificationContent>(RemoteNotificationContent::class.java.classLoader)))
+      override fun newArray(size: Int): Array<ChatNotificationContent?> = arrayOfNulls(size)
+    }
   }
 }
 
@@ -107,6 +170,7 @@ class ChatNotificationsService : NotificationsService() {
   override fun getPresentationDelegate(context: Context): PresentationDelegate = object : ExpoPresentationDelegate(context) {
     override suspend fun createNotification(notification: Notification, notificationBehavior: NotificationBehaviorRecord?): android.app.Notification {
       val original = super.createNotification(notification, notificationBehavior)
+      ChatDiagnostics.count("constructed")
       val content = notification.notificationRequest.content
       val data = content.body ?: return original
       if (data.has("taskActivity")) TaskBadgeDelivery.currentCount(context)?.let { original.number = it }
@@ -121,7 +185,7 @@ class ChatNotificationsService : NotificationsService() {
       val text = (content.text ?: "").removePrefix("$name: ")
       return NotificationCompat.Builder(context, original)
         .setCategory(NotificationCompat.CATEGORY_MESSAGE).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-        .setOnlyAlertOnce(true)
+        .setOnlyAlertOnce(chat)
         .setStyle(NotificationCompat.MessagingStyle(Person.Builder().setName("Cindy").build())
           .setConversationTitle(if (group) content.title else null).setGroupConversation(group)
           .addMessage(text, notification.originDate.time.takeIf { it > 0 } ?: System.currentTimeMillis(), person)).build()
