@@ -1,8 +1,7 @@
 name: personal-upstream
 
 on:
-  schedule:
-    - cron: '45 23 * * 5'
+  # Weekly maintenance runs locally on Sin-Arm; keep manual dispatch only.
   workflow_dispatch:
 
 permissions:

@@ -199,10 +199,11 @@ export function UpdateBanner({
   //     的 useCallback([t, open]),弹窗每次开关都会换掉它的 identity,直接依赖函数会
   //     让探测跟着弹窗开关反复重跑。
   const canOpenNotice = Boolean(onOpenVersionNotice);
+  // 同版本就绪在 macOS 上代表 Rosetta 换装 Apple 芯片包，在 Personal Windows 上代表同版本新构建；
+  // 两者都没有新的更新公告可看，但只有 macOS 才能展示 Apple 芯片换装文案。
+  const isSameAppVersion = Boolean(version && version === window.electronAPI?.appVersion);
   useEffect(() => {
-    // 同版本就绪 = 换装 Apple 芯片包，不展示公告链接，也就不必探测。
-    const nativeBuildSwitch = version === window.electronAPI?.appVersion;
-    if (status !== 'ready' || !version || !canOpenNotice || isCollapsed || nativeBuildSwitch) {
+    if (status !== 'ready' || !version || !canOpenNotice || isCollapsed || isSameAppVersion) {
       setHasNotes(false);
       return;
     }
@@ -214,7 +215,7 @@ export function UpdateBanner({
       .then((notes) => { if (!cancelled) setHasNotes(notes !== null); })
       .catch(() => { if (!cancelled) setHasNotes(false); });
     return () => { cancelled = true; };
-  }, [status, version, canOpenNotice, isCollapsed, effectiveLocale, dismissed]);
+  }, [status, version, canOpenNotice, isCollapsed, effectiveLocale, dismissed, isSameAppVersion]);
 
   // 取消:先打标记再复位,让上面的 effect 在入口按钮重新挂载后把焦点还回去。
   const handleCancelConfirm = () => {
@@ -365,12 +366,12 @@ export function UpdateBanner({
   // 文字链要显示的版本 —— undefined 即不显示。ready 态之外(superseding / error)没有
   // 可信版本号,confirming 态则刻意让位给两步确认。hasNotes 已经蕴含「ready + 该版本
   // 公告可渲染」,这里再显式列出条件,读代码时不必回溯 effect。
-  // 版本号不变却已就绪 = Rosetta 下的 Intel 包换装 Apple 芯片原生包（主进程只在这种情况
-  // 放行同版本补丁）。「已更新到 当前版本」会让人困惑，改说换装；也没有新的更新公告可看。
-  const isNativeBuildSwitch = status === 'ready' && !!version
-    && version === window.electronAPI?.appVersion;
+  // 版本号不变却已就绪在 macOS 上是 Rosetta 下的 Intel 包换装 Apple 芯片原生包；
+  // Personal Windows 仅递增 internal build number 时版本号同样不变，不能错显示成 Apple 芯片文案。
+  const isNativeBuildSwitch =
+    status === 'ready' && isSameAppVersion && window.electronAPI?.platform === 'darwin';
   const notesVersion =
-    status === 'ready' && !confirming && hasNotes && version && !isNativeBuildSwitch
+    status === 'ready' && !confirming && hasNotes && version && !isSameAppVersion
       ? version
       : undefined;
 
