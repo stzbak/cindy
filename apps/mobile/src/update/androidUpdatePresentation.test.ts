@@ -3,9 +3,9 @@ import { androidUpdateSheetFrameWidth } from './androidUpdateSheetLayout';
 import { indeterminateSweepRange, presentAndroidUpdate } from './androidUpdatePresentation';
 
 describe('Android update card presentation', () => {
-  it('offers the update with a single primary action and no detour links', () => {
+  it('offers the update immediately with the browser path reachable', () => {
     expect(presentAndroidUpdate('offer', null)).toMatchObject({
-      note: null, progress: null, primary: { label: 'updateNow', busy: false }, dismiss: 'later', browser: false,
+      note: null, progress: null, primary: { label: 'updateNow', busy: false }, dismiss: 'later', browser: true,
     });
   });
   it('explains the install permission before any settings handoff and keeps the browser path', () => {

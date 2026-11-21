@@ -99,7 +99,7 @@ describe('Android installer IO', () => {
   });
   // Unit: automatic start previously prompted before download and retained obsolete
   // APKs for 24h. Seed a fresh old package on cellular and drive real network events.
-  it('cleans obsolete packages immediately on cellular, downloads on Wi-Fi, and only then offers installation', async () => {
+  it('keeps the card visible on cellular, prefetches on Wi-Fi, and then offers installation', async () => {
     const old = `file:///cache/cindy-updates/update-ready-${'a'.repeat(64)}.apk`;
     const unrelated = 'file:///cache/cindy-updates/user.apk';
     mocks.files.set(old, 500); mocks.files.set(unrelated, 200);
@@ -108,7 +108,8 @@ describe('Android installer IO', () => {
     expect(mocks.files.has(old)).toBe(false);
     expect(mocks.files.has(unrelated)).toBe(true);
     expect(mocks.download).not.toHaveBeenCalled();
-    expect(androidInstaller.getSnapshot().silent).toBe(true);
+    expect(androidInstaller.getSnapshot()).toMatchObject({ phase: 'offer', background: true });
+    expect(androidInstaller.getSnapshot().silent).not.toBe(true);
     mocks.networkListener!({ ...mocks.network, type: 'WIFI' }); await settle();
     expect(androidInstaller.getSnapshot().phase).toBe('ready');
     expect(androidInstaller.getSnapshot().silent).not.toBe(true);
@@ -126,7 +127,8 @@ describe('Android installer IO', () => {
     mocks.networkListener!({ ...mocks.network, type: 'CELLULAR' }); await settle();
     expect(mocks.cancel).toHaveBeenCalledOnce();
     expect(mocks.download).toHaveBeenCalledOnce();
-    expect(androidInstaller.getSnapshot().silent).toBe(true);
+    expect(androidInstaller.getSnapshot()).toMatchObject({ phase: 'offer', background: true });
+    expect(androidInstaller.getSnapshot().silent).not.toBe(true);
     mocks.download.mockResolvedValue({});
     mocks.networkListener!({ ...mocks.network, type: 'WIFI' }); await settle();
     expect(mocks.resumeData).toBe('256');
@@ -201,6 +203,20 @@ describe('Android installer IO', () => {
     expect(androidInstaller.getSnapshot().phase).toBe('error');
     await androidInstaller.browser();
     expect(mocks.browser).toHaveBeenCalledWith(target.installUrl);
+  });
+
+  it('surfaces an error card with retry and browser fallback when automatic Wi-Fi prefetch stalls', async () => {
+    pending(); androidInstaller.start({ ...target, version: '2.0.5' }, { automatic: true }); await settle();
+    expect(androidInstaller.getSnapshot()).toMatchObject({ phase: 'offer', background: true });
+    mocks.files.set(mocks.file, 128);
+    await vi.advanceTimersByTimeAsync(90_000); await settle();
+    expect(mocks.cancel).toHaveBeenCalledOnce();
+    expect(androidInstaller.getSnapshot()).toMatchObject({ phase: 'error', target: { version: '2.0.5' } });
+    expect(androidInstaller.getSnapshot().silent).not.toBe(true);
+    mocks.download.mockResolvedValue({});
+    androidInstaller.retry(); await settle();
+    expect(mocks.resumeData).toBe('128');
+    expect(androidInstaller.getSnapshot().phase).toBe('ready');
   });
 
   it('reopens with persisted bytes and never shares them with another release', async () => {

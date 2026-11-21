@@ -18,7 +18,8 @@ export function presentAndroidUpdate(phase: AndroidInstallPhase, progress: numbe
   const base: AndroidUpdatePresentation = { note: null, progress: null, ready: false, primary: null, dismiss: androidUpdateDismissAction(phase), browser: false };
   switch (phase) {
     case 'offer':
-      return { ...base, primary: { label: 'updateNow', busy: false } };
+      // Discovery is always visible; browser stays reachable even without Wi-Fi.
+      return { ...base, primary: { label: 'updateNow', busy: false }, browser: true };
     case 'permission':
       return { ...base, primary: { label: 'updateNow', busy: true } };
     case 'permission-required':
