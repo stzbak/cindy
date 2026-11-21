@@ -21,12 +21,20 @@ const target = { version: '1.2.3', runtimeVersion: 'new', installUrl: 'https://u
 beforeEach(() => { vi.clearAllMocks(); mocks.platform.OS = 'android'; mocks.start.mockReturnValue(true); mocks.playInstall.mockReturnValue(false); });
 
 describe('shared bundle install routing', () => {
-  // Unit: startup/resume must select silent Wi-Fi downloading, while manual
-  // discovery and unsupported resume paths keep their existing presentation.
-  it('automatic discovery starts a silent Wi-Fi download without an alert', () => {
+  // Unit: startup/resume must open the update card and prefetch on Wi-Fi, while
+  // manual discovery and unsupported resume paths keep their existing presentation.
+  it('automatic discovery opens the card and starts the Wi-Fi prefetch without an alert', () => {
     promptBundleUpdate({ needsUpdate: true, forced: false, target }, true);
     expect(mocks.start).toHaveBeenCalledWith(
       { version: target.version, installUrl: target.installUrl },
+      { confirm: true, automatic: true },
+    );
+    expect(mocks.alert).not.toHaveBeenCalled();
+  });
+  it('resume discovery opens the card and starts the Wi-Fi prefetch on supported Android builds', () => {
+    downloadAndroidBundleUpdate({ needsUpdate: true, forced: false, target: { ...target, releaseNotes: '  Bug fixes\n' } });
+    expect(mocks.start).toHaveBeenCalledWith(
+      { version: target.version, installUrl: target.installUrl, releaseNotes: 'Bug fixes' },
       { confirm: true, automatic: true },
     );
     expect(mocks.alert).not.toHaveBeenCalled();

@@ -20,9 +20,16 @@ function git(args) {
 }
 
 // Personal Android has one intentionally narrow updater delta: it reads the fork's
-// signed GitHub Release feed and compares its native build number. Keep the allowlist
-// exact so unrelated updater implementation changes still fail the boundary check.
+// signed GitHub Release feed, compares its native build number, and keeps automatic
+// update discovery visible with retry/browser fallback when Wi-Fi prefetch is unavailable
+// or fails. Keep the allowlist exact so unrelated updater implementation changes still fail.
 const allowedMobileUpdaterFiles = new Set([
+  'apps/mobile/src/update/androidInstallController.ts',
+  'apps/mobile/src/update/androidInstallController.test.ts',
+  'apps/mobile/src/update/androidInstaller.test.ts',
+  'apps/mobile/src/update/androidUpdatePresentation.ts',
+  'apps/mobile/src/update/androidUpdatePresentation.test.ts',
+  'apps/mobile/src/update/bundleInstallRouting.test.ts',
   'apps/mobile/src/update/bundleUpdate.ts',
   'apps/mobile/src/update/bundleUpdate.test.ts',
   'apps/mobile/src/update/fetchLatestRelease.ts',

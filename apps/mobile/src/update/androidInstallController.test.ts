@@ -85,14 +85,18 @@ describe('Android in-app installation', () => {
     controller.start(target); await settle();
     expect(controller.getSnapshot().phase).toBe('permission-required');
   });
-  // Unit: automatic discovery must download before prompting, without asking for
-  // install permission. Existing manual-entry tests do not exercise this ordering.
-  it('offers a completed automatic download only in the foreground, then asks for permission on tap', async () => {
+  // Unit: automatic discovery must show the new version immediately, prefetch on
+  // Wi-Fi without asking for install permission, then offer installation.
+  it('shows the update card at discovery and offers the prefetched download in the foreground', async () => {
     const foreground = deferred<void>();
     const { controller, io } = setup({ waitForForeground: () => foreground.promise });
     controller.start(target, { automatic: true });
     await settle();
-    expect(controller.getSnapshot()).toMatchObject({ silent: true, phase: 'downloading' });
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'offer', background: true });
+    expect(controller.getSnapshot().silent).not.toBe(true);
+    expect(io.download).toHaveBeenCalledWith(
+      target.installUrl, expect.any(AbortSignal), expect.any(Function), target.version, true,
+    );
     expect(io.hasPermission).not.toHaveBeenCalled();
     expect(io.install).not.toHaveBeenCalled();
     foreground.resolve(); await settle();
@@ -105,11 +109,42 @@ describe('Android in-app installation', () => {
     expect(io.download).toHaveBeenCalledOnce();
   });
 
-  it('keeps automatic failures quiet and allows a later discovery to retry', async () => {
-    const { controller } = setup({ download: vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(file) });
-    controller.start(target, { automatic: true }); await settle();
+  it('lets the card take over a Wi-Fi prefetch that is still waiting for the network', async () => {
+    const waiting = deferred<string>();
+    const download = vi.fn()
+      .mockImplementationOnce(() => waiting.promise)
+      .mockResolvedValue(file);
+    const { controller, io } = setup({ download, hasPermission: vi.fn(async () => true) });
+    controller.start(target, { automatic: true });
+    await settle();
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'offer', background: true });
+    controller.retry();
+    await settle();
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(download.mock.calls[1][4]).not.toBe(true);
+    expect(controller.getSnapshot().phase).toBe('ready');
+    expect(io.install).toHaveBeenCalledOnce();
+  });
+
+  it('opens the browser from the card without waiting for the Wi-Fi prefetch', async () => {
+    const waiting = deferred<string>();
+    const { controller, io } = setup({ download: vi.fn(() => waiting.promise) });
+    controller.start(target, { automatic: true });
+    await settle();
+    await controller.browser();
+    expect(io.openBrowser).toHaveBeenCalledWith(target.installUrl);
     expect(controller.getSnapshot().phase).toBe('idle');
+  });
+
+  it('keeps a discovered update visible when the automatic prefetch fails', async () => {
+    const { controller } = setup({
+      hasPermission: vi.fn(async () => true),
+      download: vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(file),
+    });
     controller.start(target, { automatic: true }); await settle();
+    expect(controller.getSnapshot()).toMatchObject({ phase: 'error', target });
+    expect(controller.getSnapshot().silent).not.toBe(true);
+    controller.retry(); await settle();
     expect(controller.getSnapshot().phase).toBe('ready');
     controller.close();
     controller.start(target, { automatic: true }); await settle();

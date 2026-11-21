@@ -4,6 +4,7 @@
 // 挂载点 app/_layout.tsx。非自建变体(IS_OTA_SELFHOST=false)完全 no-op:不订阅、不发起
 // 任何网络。JS OTA 部分与启动热更门同 gate(自建 + 非 dev + expo-updates 可用);整包
 // 检查部分与 useBundleUpdatePrompt 同 gate(自建 + 非审核 + 非 TestFlight)。
+// 发现整包更新时立即展示更新卡；Wi-Fi 预下载只作为加速路径，失败不回退为静默。
 
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -28,7 +29,7 @@ import type { UpdateChannel } from '@cindy/maker-shared/update-channel';
 export function useResumeUpdateCheck(
   channel: UpdateChannel = resolveUpdateChannelForDevice(),
 ): void {
-  const personalApkUpdates = isPersonalAndroidUpdateFeedEnabled(Platform.OS);
+  const personalApkUpdates = isPersonalAndroidUpdateFeedEnabled(Platform.OS) && !isGooglePlayInstallation();
   const bundleCheckEnabled = shouldCheckBundleUpdate({
     isSelfHosted: IS_OTA_SELFHOST,
     isReviewMode: REVIEW_MODE,
