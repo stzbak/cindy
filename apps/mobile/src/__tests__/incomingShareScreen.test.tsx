@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({
-  dismissTo: vi.fn(), select: vi.fn(() => true), dispatch: vi.fn(),
+  dismissTo: vi.fn(), select: vi.fn((..._args: unknown[]) => true), dispatch: vi.fn(),
   prevent: false, onRemove: undefined as ((event: { data: { action: object }; repeat: () => void }) => void) | undefined,
   acknowledge: vi.fn(), readDevices: vi.fn(), invoke: vi.fn(async () => [] as any[]),
   platform: 'ios',
