@@ -204,6 +204,7 @@ export const router = createHashRouter([
                           ],
                         }],
                       },
+                    ],
                   },
                   {
                     // Issue Tracker — 已迁移至 GitHub，此处仅保留引导页

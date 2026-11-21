@@ -2,7 +2,7 @@ import { isTeammateTask } from './teammateTaskSource';
 import { applyMobileSessionRebalancePreferencePatch } from './sessionRebalanceCache';
 import { Platform } from 'react-native';
 import { isCompanionsEnabled } from '@/config/personalProfile';
-import { readTokenSpeedSnapshot, type TokenSpeedSnapshot } from '@cindy/maker-shared/usage-format';
+import { receiveTokenSpeedSnapshot, type TokenSpeedSnapshot } from '@cindy/maker-shared/usage-format';
 import { historyTurnEnded, nextHistoryCacheReceipt } from '@cindy/maker-shared/message-window';
 import { normalizeTaskTags, reconcileTaskTags } from '@cindy/maker-shared';
 import {
