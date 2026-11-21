@@ -55,6 +55,8 @@ test('allows only the reviewed Personal updater deltas', () => {
   try {
     const base = git(['rev-parse', 'HEAD'], repo);
     write(repo, 'apps/mobile/src/update/fetchPersonalLatestRelease.ts', 'export const feed = true;\n');
+    write(repo, 'apps/mobile/src/update/androidInstallController.ts', 'export const visibleOffer = true;\n');
+    write(repo, 'apps/mobile/src/update/androidUpdatePresentation.ts', 'export const browserFallback = true;\n');
     write(repo, 'apps/desktop/src/main/updateService.ts', 'export const personalFeed = true;\n');
     git(['commit', '-m', 'personal updater'], repo);
     const allowed = run(process.execPath, [SCRIPT, '--base', base], repo);
