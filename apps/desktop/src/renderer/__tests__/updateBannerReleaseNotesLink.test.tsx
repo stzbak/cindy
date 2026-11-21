@@ -139,15 +139,27 @@ describe('UpdateBanner release-notes link', () => {
     expect(fetchReleaseNotes).toHaveBeenCalledTimes(1);
   });
 
-  // 同版本补丁只会是 Rosetta 下的 Intel 包换装 Apple 芯片包：标题不能说「已更新到当前版本」，
-  // 也没有新的更新公告可看。
-  it('describes a same-version patch as the Apple silicon switch without probing notes', async () => {
-    Object.assign(window.electronAPI, { appVersion: '1.4.2' });
+  // 同版本补丁只在 macOS 上代表 Rosetta 换装 Apple 芯片包；Windows 上代表 Personal 同版本新构建，
+  // 不能显示「Apple 芯片版已就绪」，也同样没有新的更新公告可看。
+  it('describes a same-version patch as the Apple silicon switch on macOS without probing notes', async () => {
+    Object.assign(window.electronAPI, { appVersion: '1.4.2', platform: 'darwin' });
     render(<UpdateBanner isCollapsed={false} onOpenVersionNotice={vi.fn()} />);
 
     expect(await screen.findByText('update.banner.nativeBuildTitle')).toBeTruthy();
     expect(screen.getByText('update.banner.nativeBuildSubtitle')).toBeTruthy();
     expect(screen.queryByText('update.banner.title:1.4.2')).toBeNull();
+    expect(fetchReleaseNotes).not.toHaveBeenCalled();
+    expect(screen.queryByText(LINK)).toBeNull();
+  });
+
+  it('keeps standard update copy for a same-version Personal rebuild on Windows without probing notes', async () => {
+    Object.assign(window.electronAPI, { appVersion: '1.4.2', platform: 'win32' });
+    render(<UpdateBanner isCollapsed={false} onOpenVersionNotice={vi.fn()} />);
+
+    expect(await screen.findByText('update.banner.title:1.4.2')).toBeTruthy();
+    expect(screen.getByText('update.banner.subtitle')).toBeTruthy();
+    expect(screen.queryByText('update.banner.nativeBuildTitle')).toBeNull();
+    expect(screen.queryByText('update.banner.nativeBuildSubtitle')).toBeNull();
     expect(fetchReleaseNotes).not.toHaveBeenCalled();
     expect(screen.queryByText(LINK)).toBeNull();
   });

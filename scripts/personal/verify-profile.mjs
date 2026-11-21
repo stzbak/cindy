@@ -28,6 +28,7 @@ const commands = [
     'src/renderer/components/settings/__tests__/SettingsViewEscape.test.tsx',
     'src/main/__tests__/manifestService.test.ts',
     'src/main/__tests__/updateService.test.ts',
+    'src/renderer/__tests__/updateBannerReleaseNotesLink.test.tsx',
     '--maxWorkers=1']],
   [pnpm, ['--filter', 'mobile', 'exec', 'vitest', 'run',
     'src/__tests__/chatServerMobileEntry.test.tsx',
