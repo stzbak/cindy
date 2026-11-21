@@ -104,7 +104,7 @@ export function openBundleInstall(target: BundleInstallTarget): void {
  * - 强更:不弹窗,进入模块级阻断态,由 root 层渲染只有「去更新」的闸门屏。
  *   弹窗做不到阻断——RN Alert 的按钮点一下就关(cancelable: false 只挡点外部/返回键),
  *   弹窗消失后底下的 App 照旧可用,那是"强提醒"不是"强制"。
- * - 非强更:Android 自动检查先静默下载，手动检查与其他安装渠道保留普通提示。
+ * - 非强更:Android 自动检查立即展示更新卡；Wi-Fi 静默预下载只作为加速路径。
  * 两种情况都要求先解析出可跳转的安装地址:拿不到地址就什么都不做,
  * 尤其不能把用户关进一个没有出口的阻断屏(见 forcedUpdateStore 的三层保证)。
  */
@@ -117,7 +117,7 @@ export function promptBundleUpdate(evaluation: ReturnType<typeof evaluateBundleU
     enterForcedUpdate(evaluation.target);
     return;
   }
-  // 自动检查先在 Wi-Fi 下静默备好 APK；手动检查仍可直接打开更新卡。
+  // 自动检查立即展示更新卡，并在 Wi-Fi 下后台预下载；失败或未连 Wi-Fi 时卡片仍可用。
   if (startAndroidInstall(evaluation.target, true, automatic)) return;
 
   const notes = evaluation.target.releaseNotes?.trim();

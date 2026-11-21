@@ -5,7 +5,7 @@
 // - JS OTA:静默 check → fetch,**绝不 reload**(reload 会闪屏断状态);下载好的 bundle
 //   由 expo-updates 在下次冷启动自动生效。
 // - 整包(runtimeVersion 变化):静默拉 /latest 比对，强更上报 onForcedUpdate 进入阻断态；
-//   普通更新交给 onAvailableUpdate，Android 在 Wi-Fi 下备好 APK 后才提示安装。
+//   普通更新交给 onAvailableUpdate，Android 立即展示更新卡并在 Wi-Fi 下后台预下载。
 // - 节流:只认真正的 background → active(iOS 通知中心/来电导致的 inactive 抖动不算),
 //   两次检查最小间隔 minIntervalMs;创建时间视为"刚检查过"(冷启动路径刚跑完,首次
 //   切回不重复查)。

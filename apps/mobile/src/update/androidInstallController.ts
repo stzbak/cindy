@@ -5,7 +5,7 @@ export type AndroidInstallPhase = 'idle' | 'offer' | 'permission-required' | 'pe
 export interface AndroidInstallStartOptions {
   /** Discovery prompts wait for an explicit tap; the forced gate's button already is that tap. */
   confirm?: boolean;
-  /** Download silently on Wi-Fi, then offer installation. */
+  /** Background Wi-Fi prefetch; the offer card is visible from discovery onward. */
   automatic?: boolean;
 }
 export interface AndroidInstallState {
@@ -13,6 +13,8 @@ export interface AndroidInstallState {
   target: AndroidInstallTarget | null;
   progress: number | null;
   silent?: boolean;
+  /** Automatic Wi-Fi prefetch is running behind the visible offer card. */
+  background?: boolean;
 }
 export interface AndroidInstallIO {
   supported(): boolean;
@@ -66,25 +68,39 @@ export class AndroidInstallController {
     if (options.automatic && this.dismissedAutomaticTarget === key) return true;
     if (this.state.phase !== 'idle' || this.operation) {
       const same = this.state.target?.version === target.version && this.state.target?.installUrl === target.installUrl;
-      // Explicit actions can take over a silent transfer; discovery can replace an
-      // obsolete silent target, but must not interrupt a user's installation.
+      // Repeated discovery of the same target does not restart an automatic prefetch.
       if (same && options.automatic) return true;
-      if (!this.state.silent && !(this.state.phase === 'ready' && !same && !this.operation)) return true;
+      const background = this.state.background === true;
+      // Explicit actions can take over the Wi-Fi prefetch, but nothing may interrupt
+      // a user's download or installation. Discovery can replace an obsolete target.
+      if (this.operation && !background) return true;
+      if (!background && !(this.state.phase === 'ready' && !same && !this.operation)) return true;
       this.cancel();
     }
     this.awaitingConfirm = options.confirm === true;
-    this.update({ phase: 'permission', target, progress: null, silent: options.automatic === true });
+    this.update(options.automatic
+      ? { phase: 'offer', target, progress: null, background: true }
+      : { phase: 'permission', target, progress: null });
     void this.run(false, options.automatic === true);
     return true;
   }
   /** The sheet's primary action: confirm the offer, grant permission, install, or retry. */
   retry = (): void => {
-    if (!this.operation && this.state.target) {
-      const grant = this.state.phase === 'permission-required' || this.state.phase === 'permission-denied';
-      // Tapping the primary action of the first card is the confirmation.
-      this.awaitingConfirm = false;
-      void this.run(grant);
+    const target = this.state.target;
+    if (!target) return;
+    if (this.state.background) {
+      // The card's primary action takes over the Wi-Fi prefetch on the current network.
+      const prefetch = this.operation;
+      this.operation = null;
+      this.file = null;
+      this.update({ phase: 'offer', target, progress: null });
+      prefetch?.abort();
     }
+    if (this.operation) return;
+    const grant = this.state.phase === 'permission-required' || this.state.phase === 'permission-denied';
+    // Tapping the primary action of the first card is the confirmation.
+    this.awaitingConfirm = false;
+    void this.run(grant);
   };
 
   private async run(grant = false, automatic = false): Promise<void> {
@@ -95,7 +111,8 @@ export class AndroidInstallController {
     const current = () => !operation.signal.aborted;
     try {
       if (automatic) {
-        this.update({ phase: 'downloading', target, progress: null, silent: true });
+        // The offer card is already visible; Wi-Fi prefetch only shortens the wait.
+        this.update({ phase: 'offer', target, progress: null, background: true });
         const file = await this.io.download(target.installUrl, operation.signal, () => {}, target.version, true);
         if (!current()) return; // Completed files remain reusable in the target cache.
         this.file = file;
@@ -135,8 +152,9 @@ export class AndroidInstallController {
     } catch {
       if (current()) {
         if (automatic) {
+          // Never swallow a discovered update: keep the card with retry and browser fallback.
           this.file = null;
-          this.update(IDLE); // Automatic failures stay quiet; a later check can retry.
+          this.update({ phase: 'error', target, progress: null });
           return;
         }
         // A rejected handoff (invalid APK, missing installer, revoked permission) owns no file.
@@ -170,7 +188,14 @@ export class AndroidInstallController {
 
   browser = async (): Promise<void> => {
     const target = this.state.target;
-    if (!target || this.operation) return;
+    if (!target) return;
+    if (this.state.background) {
+      const prefetch = this.operation;
+      this.operation = null;
+      this.file = null;
+      this.update({ phase: 'offer', target, progress: null });
+      prefetch?.abort();
+    } else if (this.operation) return;
     const operation = new AbortController();
     this.operation = operation;
     try {
