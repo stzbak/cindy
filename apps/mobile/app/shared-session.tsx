@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Keyboard, Pressable, StyleSheet, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { AppState, Keyboard, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { isSharedTasksEnabled } from '@/config/personalProfile';
 import { useTranslation } from 'react-i18next';
 import { Check, Clock, FileText, Laptop, Link, Users } from 'lucide-react-native';
 import { buildSharedTaskInvitationLink, parseSharedTaskInvitation, sharedTaskAccountName, sharedTaskHostPeer, parseSharedTaskPeer, SHARED_TASK_HOST_CHANNEL,
@@ -33,6 +34,10 @@ import { fontWeight, iconSize, lineHeight, radius, spacing, typeScale } from '@/
 
 /** Plan B management only; conversation/input continue through the ordinary remote task. */
 export default function SharedSessionScreen() {
+  return isSharedTasksEnabled(Platform.OS) ? <SharedSessionScreenContent /> : <Redirect href="/" />;
+}
+
+function SharedSessionScreenContent() {
   const { sessionId, deviceId, sharedTaskId, expectedOwnedSharedTaskId, mode } = useLocalSearchParams<{ sessionId?: string; deviceId?: string; sharedTaskId?: string; expectedOwnedSharedTaskId?: string; mode?: string }>();
   const management = mode === 'manage' && !sessionId && !deviceId && !sharedTaskId;
   const router = useRouter();

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PluginReviewUpdate } from '../../shared/pluginContributions';
+import { isCloudBackgroundPollersEnabled } from '../../shared/personalProfile';
 import { useAuth } from './AuthContext';
 
 const empty: PluginReviewUpdate[] = [];
@@ -18,7 +19,8 @@ export const usePluginReviewUpdates = () => useContext(PluginReviewUpdatesContex
 export function PluginReviewUpdatesProvider({ children }: { children: ReactNode }) {
   const { dataOwnerId, dataOwnerGeneration, user, mode } = useAuth();
   const owner = JSON.stringify([dataOwnerId, dataOwnerGeneration, user?.id, mode]);
-  const contributor = mode === 'cloud' && (user?.membershipKind === 'personal' || user?.membershipKind === 'org');
+  const pollersEnabled = isCloudBackgroundPollersEnabled(window.electronAPI?.platform ?? '');
+  const contributor = pollersEnabled && mode === 'cloud' && (user?.membershipKind === 'personal' || user?.membershipKind === 'org');
   const current = useRef(owner);
   current.current = owner;
   const [snapshot, setSnapshot] = useState({ owner, updates: empty });
@@ -61,6 +63,7 @@ export function PluginReviewUpdatesProvider({ children }: { children: ReactNode 
   useEffect(() => {
     lifecycle.current++;
     pending.current = null;
+    if (!contributor) return;
     void refresh();
     const sync = () => { void refresh(); };
     const timer = window.setInterval(sync, 60_000);
@@ -74,7 +77,7 @@ export function PluginReviewUpdatesProvider({ children }: { children: ReactNode 
       window.removeEventListener('online', sync);
       document.removeEventListener('visibilitychange', sync);
     };
-  }, [refresh]);
+  }, [contributor, refresh]);
   return <PluginReviewUpdatesContext.Provider value={{ updates: contributor && snapshot.owner === owner ? snapshot.updates : empty, refresh, markRead }}>
     {children}
   </PluginReviewUpdatesContext.Provider>;

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { isSharedTaskPeer, sharedTaskHostPeer, startSharedTaskListPoller, type SharedTaskListItem } from '@cindy/device-link';
 import { CINDY_MAKE_ENABLED, isCindyMakeSource } from '@cindy/maker-shared/cindy-make-feature';
+import { isSharedTasksEnabled } from '@/config/personalProfile';
 import { useAuth } from '@/auth/AuthContext';
 import { getMobileAuthOwner, isMobileAuthOwnerCurrent } from '@/auth/authOwnerGeneration';
 import { remoteSessionStore } from '@/session/remoteSessionStore';
@@ -17,10 +18,11 @@ export function useSharedTasks(): readonly SharedTaskListItem[] {
   const api = useSharedTaskApi();
   const { openLink, closeLink, invoke, status: primaryStatus, sharedTaskAvailable, sharedTaskConnection } = useDeviceLink();
   const status = sharedTaskConnection?.status ?? primaryStatus;
+  const sharedTasksEnabled = isSharedTasksEnabled(Platform.OS);
   const [owned, setOwned] = useState<{ owner: ReturnType<typeof getMobileAuthOwner>; tasks: SharedTaskListItem[] } | null>(null);
   useEffect(() => {
     // Reconnecting reruns this effect, which reads immediately.
-    if (!isAuthenticated || status !== 'online' || sharedTaskAvailable !== true) return;
+    if (!sharedTasksEnabled || !isAuthenticated || status !== 'online' || sharedTaskAvailable !== true) return;
     const owner = getMobileAuthOwner();
     let disposed = false;
     const current = () => !disposed && isMobileAuthOwnerCurrent(owner);

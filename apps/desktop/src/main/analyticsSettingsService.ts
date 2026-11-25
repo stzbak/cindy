@@ -30,6 +30,7 @@ import {
 import { acceptCurrentLegalTerms, readLegalTermsConsentStatus } from './legal-terms-store';
 import { createLogger } from './logger';
 import { onQuit } from './lifecycle';
+import { isDesktopTelemetryEnabled } from '../shared/personalProfile';
 import { assertTrustedAppRendererEvent } from './security/trustedAppRenderer.js';
 import { throwIpcError } from './utils/ipcValidate.js';
 import {
@@ -88,7 +89,7 @@ function writeOrThrowIpcError(write: () => void, context: string): void {
  * 退出本地模式后闸自动松开,用户原有的同意与开关一字未动。
  */
 function isReportingAllowedNow(): boolean {
-  return isAnalyticsAllowed() && !authManager.isLocalMode();
+  return isDesktopTelemetryEnabled(process.platform) && isAnalyticsAllowed() && !authManager.isLocalMode();
 }
 
 export function analyticsSettingsPayload(): AnalyticsSettingsPayload {

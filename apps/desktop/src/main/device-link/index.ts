@@ -235,7 +235,7 @@ import { isAgentNetActive, agentNetAllowsLegacy, agentNetRequiresEncryption, cre
   agentNetTransportAttestation, verifyAgentNetTransportAttestation, agentNetPrefersPrimary, useAgentNetSessions, agentNetSession,
   agentNetPeerRoute, agentNetRelayStalled, agentNetPeerConnectedAt, connectAgentNetSessionPeer, agentNetPeerState, agentNetNotifyCoverage, agentNetListedPhones, agentNetNetworkChanged, agentNetRelayConnected, onAgentNetRelayChange, onAgentNetPathChange, agentNetRelayRoute, setAgentNetDuplicateIdentityCooldown } from './agentNetRuntime.js';
 import { AgentNetSessionLinks, agentNetSessionLane, outboundOnSession, routeSessionPeers, type PeerLinks } from '@cindy/agent-net';
-import { isCompanionsEnabled } from '../../shared/personalProfile.js';
+import { isCompanionsEnabled, isSharedTasksEnabled } from '../../shared/personalProfile.js';
 import { ensureInvokeLinkReady, invokeWithClosedLinkRecovery, requiresSessionLink } from './linkRecovery';
 import { noteLocalNetworkControlEnabled, noteLocalNetworkRelayOnlyPeers, onLocalNetworkGranted } from '../local-network/index.js';
 import { invalidatePluginOauth } from '../plugin-oauth/runtime.js';
@@ -1783,6 +1783,7 @@ export function initDeviceLinkService(options: DeviceLinkServiceOptions = {}): v
           await refreshProviderShareHost('agent-net-transport');
           return !!ownedProviderShareGuestAccess(providerShareGuestPeer(request.resourceId, request.scope.memberId, request.guestDeviceId));
         }
+        if (!isSharedTasksEnabled(process.platform)) return false;
         return authorizeSharedTaskTransportRequest(request);
       }, () => { if (client === primaryFacade && arbiter?.isOwner()) bindAgentNetSharing(routedClient, connectionOptions); });
       // Guest routes must start even when this account has no official V2
@@ -1790,7 +1791,7 @@ export function initDeviceLinkService(options: DeviceLinkServiceOptions = {}): v
       // an otherwise independent private invitation to the official service.
       try { bindAgentNetSharing(routedClient, connectionOptions); }
       catch { log.warn('private sharing credentials unavailable'); }
-      if (client) startSharedTaskRuntime({
+      if (client && isSharedTasksEnabled(process.platform)) startSharedTaskRuntime({
         client,
         revoke(sharedTaskId, memberId) {
           for (const id of getKnownControllerIds()) {

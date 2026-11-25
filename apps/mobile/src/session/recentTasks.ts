@@ -1,6 +1,7 @@
 import { subscribeMobileAuthOwner } from '@/auth/authOwnerGeneration';
 
 export const MAX_RECENT_TASKS = 5;
+let maxRecentTasks = MAX_RECENT_TASKS;
 export type RecentTaskRoute = {
   pathname: '/sessions/[sessionId]';
   params: { deviceId: string; deviceName: string; sessionId: string };
@@ -15,6 +16,14 @@ export const subscribeRecentTasks = (listener: () => void) => {
   listeners.add(listener); return () => { listeners.delete(listener); };
 };
 export const getRecentTasks = () => recent;
+export function setRecentTaskLimit(limit: number) {
+  const nextLimit = Math.max(1, Math.floor(limit));
+  maxRecentTasks = nextLimit;
+  if (recent.length > maxRecentTasks) {
+    recent = recent.slice(-maxRecentTasks);
+    emit();
+  }
+}
 export function rememberRecentTask(href: RecentTaskRoute) {
   const { deviceId, deviceName, sessionId } = href.params;
   if (!deviceId || !sessionId) return;
@@ -22,7 +31,7 @@ export function rememberRecentTask(href: RecentTaskRoute) {
   if (recentTaskKey(recent.at(-1)?.params ?? {}) === key && recent.at(-1)?.params.deviceName === deviceName) return;
   recent = [...recent.filter(item => recentTaskKey(item.params) !== key), {
     pathname: '/sessions/[sessionId]' as const, params: { deviceId, deviceName, sessionId },
-  }].slice(-MAX_RECENT_TASKS);
+  }].slice(-maxRecentTasks);
   emit();
 }
 

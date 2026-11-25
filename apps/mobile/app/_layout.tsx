@@ -1,7 +1,7 @@
 import { SharedTaskListProvider } from '@/session/SharedTaskList';
 import { taskListScreenAnimation } from '@/session/taskListNavigationPolicy';
 import { completePrecreatedWorktreeRecovery } from '@/session/completePrecreatedWorktreeRecovery';
-import { recentTaskKey } from '@/session/recentTasks';
+import { recentTaskKey, setRecentTaskLimit } from '@/session/recentTasks';
 import { TaskListTransitionContext, useTaskListTransition } from '@/session/SessionDrawerNavigationContext';
 import { readComposerEntry } from '@/session/composerMorph';
 import { RecentMessageHistoriesProvider } from '@/session/RecentMessageHistories';
@@ -106,6 +106,16 @@ import { RemoteDesktopHost } from '@/remote-desktop/RemoteDesktopHost';
 import { ChatInviteHost } from '@/chat/ChatInviteHost';
 import { GiftCardHost } from '@/gift-card/GiftCardHost';
 import { TaskArchiveUndoHost } from '@/session/TaskArchiveUndoNotice';
+import {
+  getMaxRecentTasks,
+  isCompanionsEnabled,
+  isGiftCardEnabled,
+  isHandheldModeEnabled,
+  isSharedTasksEnabled,
+  isUsageWidgetsEnabled,
+} from '@/config/personalProfile';
+
+setRecentTaskLimit(getMaxRecentTasks(Platform.OS));
 
 const holdSplash = () => undefined;
 
@@ -159,6 +169,9 @@ function AdaptiveNavigationStack({ accountGeneration, statusBarTheme }: {
 }
 
 function NavigationGate() {
+  const companionsEnabled = isCompanionsEnabled(Platform.OS);
+  const giftCardEnabled = isGiftCardEnabled(Platform.OS);
+  const sharedTasksEnabled = isSharedTasksEnabled(Platform.OS);
   const pendingSharedTaskInvitation = usePendingSharedTaskInvitationIntent();
   // 登录前扫了「加入中转」二维码:登录完成后回到加入页继续(加入码只在内存里)。
   const pendingRelayJoin = Boolean(usePendingRelayJoinIntent()?.link);
@@ -219,13 +232,13 @@ function NavigationGate() {
       return;
     }
     if (auth.isAuthenticated && inAuthGroup) {
-      if (pendingSharedTaskInvitation) router.replace('/shared-session');
+      if (sharedTasksEnabled && pendingSharedTaskInvitation) router.replace('/shared-session');
       else if (pendingRelayJoin) router.replace('/relay-join');
       else router.replace('/');
-    } else if (auth.isAuthenticated && pendingSharedTaskInvitation && segments.join('/') !== 'shared-session') {
+    } else if (auth.isAuthenticated && sharedTasksEnabled && pendingSharedTaskInvitation && segments.join('/') !== 'shared-session') {
       router.replace('/shared-session');
     }
-  }, [auth.initialized, auth.isAuthenticated, pendingRelayJoin, pendingSharedTaskInvitation, router, segments]);
+  }, [auth.initialized, auth.isAuthenticated, pendingRelayJoin, pendingSharedTaskInvitation, router, segments, sharedTasksEnabled]);
 
   useEffect(() => {
     if (!auth.isAuthenticated || !auth.accountDeletionRestored) return;
@@ -266,10 +279,14 @@ function NavigationGate() {
         </McpAppViewsProvider>
       </RemoteDesktopHost>
       <TaskArchiveUndoHost />
-      <ChatInviteHost ready={auth.initialized && auth.isAuthenticated
-        && segments[0] !== '(auth)' && segments[0] !== 'add-account'} />
-      <GiftCardHost ready={auth.initialized && auth.isAuthenticated
-        && segments[0] !== '(auth)' && segments[0] !== 'add-account'} />
+      {companionsEnabled ? (
+        <ChatInviteHost ready={auth.initialized && auth.isAuthenticated
+          && segments[0] !== '(auth)' && segments[0] !== 'add-account'} />
+      ) : null}
+      {giftCardEnabled ? (
+        <GiftCardHost ready={auth.initialized && auth.isAuthenticated
+          && segments[0] !== '(auth)' && segments[0] !== 'add-account'} />
+      ) : null}
     </NavigationThemeProvider>
   );
 }
@@ -449,10 +466,10 @@ function RootAfterUpdateChannel({ channel }: { channel: UpdateChannel }) {
         <PrecreatedWorktreeRecoveryBridge />
         <MobileOutboxBridge />
         <RemoteHistoryPrefetchBridge />
-        <UsageWidgetBridge />
+        {isUsageWidgetsEnabled(Platform.OS) ? <UsageWidgetBridge /> : null}
         <AgentActivityBridge />
         {/* 掌机模式:手柄语音键 / 焦点导航 / 副屏(仅含 cindy-handheld 的 Android 原生包,不渲染 UI) */}
-        <HandheldModeBridge />
+        {isHandheldModeEnabled(Platform.OS) ? <HandheldModeBridge /> : null}
         {/* 渲染兜底:启动稳定后,页面树里任何一处渲染报错都落到这里,显示可重新加载的错误页而不是
             让 App 退出。只包页面树、留在 AuthProvider / DeviceLinkProvider 里面:重新加载只重挂页面,
             不会重建登录与设备连接——重建 AuthProvider 会让可能仍在途的令牌刷新与新实例的刷新

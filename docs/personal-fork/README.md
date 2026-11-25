@@ -54,7 +54,19 @@ Android/Windows build or real-device upgrade and remote-control acceptance.
 - Resource monitor, remote desktop viewer, sidebar pop-outs and the global voice overlay are created on demand. Startup prewarm and unused spare replenishment are disabled only on Windows. Existing ready/presented handshakes, permissions, reuse and recovery remain; the first open can take longer. This is the owner's explicit Personal exception to the upstream auxiliary-window prewarm baseline.
 - Personal IM bots and official Hook chat ingress are hidden from settings (including old deep links), with IPC registration, orchestrator setup and account connection disabled. Independent enterprise WeChat/ntfy notifications, ordinary task notifications, scheduler and device-link remain available. Saved IM credentials and histories stay intact.
 - Upstream V2 removed the companion routine/autonomy engines. Windows does not start the V2 teammate migration or companion import recovery; existing V1 definitions/history remain intact. The existing scheduler home guard also skips legacy companion backing schedules and verified companion-owned project automations on Windows, without blocking ordinary project schedules. Linux keeps upstream migration and automation behavior.
+- External input-device adapters (Xbox/PlayStation/Switch gamepads and Work Louder keyboards) are not started or polled on Windows, and their hardware accessories UI is hidden in Keyboard Shortcuts settings.
+- Global voice input shortcuts, Windows low-level function-key listener startup, and the Voice Input settings tab are disabled on Windows. Audio attachments and other audio consumers remain unchanged.
+- Cross-account shared tasks are disabled on Windows (runtime timer/transport authorization skipped, Settings tab and join dialog hidden) while preserving own-account multi-device link, remote control and remote desktop.
+- Automatic background plugin marketplace sync (owner-ready, foreground refresh, and 30-minute periodic timer) and foreground cloud pollers (60-second plugin review updates and cloud instance access checks) are disabled on Windows; manual plugin catalog browsing remains available.
+- Official cloud heartbeat, TapDB/product-token analytics reporting, and startup log backfill are disabled on Windows while preserving authentication, legal terms checks and update feeds.
 - macOS and Linux retain upstream behavior. These gates reduce runtime work; they do not remove bundled SDKs or claim a measured installer-size or memory saving.
+
+## Android resident resource reductions
+
+- Companion group-invite clipboard host (`ChatInviteHost`), gaming handheld bridge (`HandheldModeBridge`), desktop quota widget 5-minute polling (`UsageWidgetBridge`), cross-account shared-task polling/routes, gift-card host/settings, and voice dictionary/speaker-filter settings and hydration are disabled on Android Personal.
+- The invalid TapDB analytics toggle is hidden on Android settings since official TapDB is already disabled on Android Personal.
+- Resident task history tree retention (`recentTasks`) is capped at 3 on Android Personal (5 on iOS/upstream) to trim resident RAM while preserving smooth switching across the active and two recent tasks.
+- Own-account multi-device link, remote control, remote desktop, ordinary task notifications, attachments, automation, and history prefetch remain active.
 
 ## Weekly upstream tracking and stable publication
 

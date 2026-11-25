@@ -431,12 +431,13 @@ describe('SettingsView Escape', () => {
     expect(getSelection).toHaveBeenCalledTimes(2);
     expect(setSelection).toHaveBeenCalledTimes(2);
   });
-  // Unit: Windows IM removal includes legacy deep links, absent from Escape cases.
+  // Unit: Windows Personal hides IM, global voice, and shared-task tabs/deep links.
   // The same production settings component is rendered without Electron.
-  it.each(['im-bot', 'feishu-bot', 'slack-bot', 'tina'])('blocks the Windows %s settings deep link', async (tab) => {
+  it.each(['im-bot', 'feishu-bot', 'slack-bot', 'tina', 'voice-input', 'shared-tasks'])('blocks the Windows %s settings deep link', async (tab) => {
     vi.stubGlobal('electronAPI', { ...window.electronAPI, platform: 'win32', appVersion: '1.0.0' });
     await act(async () => { renderSettings('/settings?tab=' + tab); });
     expect(screen.queryByText('IM bot settings')).toBeNull();
+    expect(screen.getByRole('tabpanel').id).toBe('settings-panel-general');
   });
 
   it('retains IM settings on other desktop platforms', async () => {

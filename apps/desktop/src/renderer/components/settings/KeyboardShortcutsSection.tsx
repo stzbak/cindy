@@ -72,6 +72,7 @@ import {
 } from '../../../shared/xboxGamepad';
 import { XboxGamepadEntry, XboxGamepadSettings } from './XboxGamepadSettings';
 import { RestoreDefaultButton } from '@/components/ui/reset-buttons';
+import { isInputDevicesEnabled } from '../../../shared/personalProfile';
 
 const log = createLogger('settings:keyboard-shortcuts');
 
@@ -145,19 +146,20 @@ export function KeyboardShortcutsSection({ scrollRef }: { scrollRef?: RefObject<
     captureScroll();
     setHardwarePane(pane);
   };
-  const workLouderCodex = useWorkLouderCodex({ model: 'codex-micro', watchConnection: true });
+  const inputDevicesEnabled = isInputDevicesEnabled(window.electronAPI?.platform ?? '');
+  const workLouderCodex = useWorkLouderCodex({ model: 'codex-micro', watchConnection: inputDevicesEnabled });
   const workLouderCreator = useWorkLouderCodex({
     model: 'creator-micro-2',
-    watchConnection: true,
+    watchConnection: inputDevicesEnabled,
   });
   const workLouderBoards = {
     'codex-micro': workLouderCodex,
     'creator-micro-2': workLouderCreator,
   };
-  const xboxGamepad = useXboxGamepad({ family: 'xbox', watchConnection: true });
-  const playstationGamepad = useXboxGamepad({ family: 'playstation', watchConnection: true });
-  const nintendoGamepad = useXboxGamepad({ family: 'nintendo', watchConnection: true });
-  const genericGamepad = useXboxGamepad({ family: 'generic', watchConnection: true });
+  const xboxGamepad = useXboxGamepad({ family: 'xbox', watchConnection: inputDevicesEnabled });
+  const playstationGamepad = useXboxGamepad({ family: 'playstation', watchConnection: inputDevicesEnabled });
+  const nintendoGamepad = useXboxGamepad({ family: 'nintendo', watchConnection: inputDevicesEnabled });
+  const genericGamepad = useXboxGamepad({ family: 'generic', watchConnection: inputDevicesEnabled });
   const gamepads = {
     xbox: xboxGamepad,
     playstation: playstationGamepad,
@@ -189,11 +191,11 @@ export function KeyboardShortcutsSection({ scrollRef }: { scrollRef?: RefObject<
     new URLSearchParams(window.location.search).get('workLouderCodex') === '1';
 
   useEffect(() => {
-    if (workLouderOpenRequested) {
+    if (inputDevicesEnabled && workLouderOpenRequested) {
       setHardwareReturnTo('list');
       setHardwarePane('codex-micro');
     }
-  }, [workLouderOpenRequested]);
+  }, [inputDevicesEnabled, workLouderOpenRequested]);
 
   const openDevice = (device: WorkLouderModel | GamepadFamily, from: 'list' | 'accessories') => {
     setHardwareReturnTo(from);
@@ -448,7 +450,7 @@ export function KeyboardShortcutsSection({ scrollRef }: { scrollRef?: RefObject<
       <SettingsSection>
         {globalError && <span className="text-12 text-[var(--error-fg)]">{globalError}</span>}
 
-        {VISIBLE_WORKLOUDER_MODELS.filter((model) => workLouderConnected[model]).map((model) => (
+        {inputDevicesEnabled && VISIBLE_WORKLOUDER_MODELS.filter((model) => workLouderConnected[model]).map((model) => (
           <WorkLouderCodexEntry
             key={model}
             model={model}
@@ -457,7 +459,7 @@ export function KeyboardShortcutsSection({ scrollRef }: { scrollRef?: RefObject<
             onOpen={() => openDevice(model, 'list')}
           />
         ))}
-        {VISIBLE_GAMEPAD_FAMILIES.filter((family) => gamepadConnected[family]).map((family) => (
+        {inputDevicesEnabled && VISIBLE_GAMEPAD_FAMILIES.filter((family) => gamepadConnected[family]).map((family) => (
           <XboxGamepadEntry
             key={family}
             family={family}
@@ -466,7 +468,7 @@ export function KeyboardShortcutsSection({ scrollRef }: { scrollRef?: RefObject<
             onOpen={() => openDevice(family, 'list')}
           />
         ))}
-        <AccessoriesEntry onOpen={() => openHardwarePane('accessories')} />
+        {inputDevicesEnabled && <AccessoriesEntry onOpen={() => openHardwarePane('accessories')} />}
 
         {/* 快捷键列表是带组合键与行内报错的紧凑列表，不套 SettingsRow */}
         <SettingsCard className="flex flex-col gap-1 p-5">

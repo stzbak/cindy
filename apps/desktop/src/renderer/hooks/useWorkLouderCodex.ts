@@ -6,6 +6,7 @@ import type {
   WorkLouderCodexState,
   WorkLouderModel,
 } from '../../shared/workLouderCodex';
+import { isInputDevicesEnabled } from '../../shared/personalProfile';
 
 export interface WorkLouderCodexViewState {
   state: WorkLouderCodexState | null;
@@ -37,8 +38,9 @@ const CONNECTION_PROBE_MS = 2_000;
 
 export function useWorkLouderCodex(options: WorkLouderCodexOptions = {}): WorkLouderCodexViewState {
   const { model = 'codex-micro', watchConnection = false } = options;
+  const inputDevicesEnabled = isInputDevicesEnabled(window.electronAPI?.platform ?? '');
   const [state, setState] = useState<WorkLouderCodexState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(inputDevicesEnabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<'load' | 'save' | null>(null);
   const mountedRef = useRef(true);
@@ -48,6 +50,10 @@ export function useWorkLouderCodex(options: WorkLouderCodexOptions = {}): WorkLo
   const confirmedSettingsRef = useRef<WorkLouderCodexSettings | null>(null);
 
   const reload = useCallback(async () => {
+    if (!inputDevicesEnabled) {
+      if (mountedRef.current) setLoading(false);
+      return;
+    }
     const api = window.electronAPI?.workLouderCodex;
     if (!api) {
       if (mountedRef.current) {
@@ -78,6 +84,7 @@ export function useWorkLouderCodex(options: WorkLouderCodexOptions = {}): WorkLo
   }, [model]);
 
   useEffect(() => {
+    if (!inputDevicesEnabled) return;
     mountedRef.current = true;
     const api = window.electronAPI?.workLouderCodex;
     const unsubscribe = api?.onStateChanged((next) => {
@@ -107,7 +114,7 @@ export function useWorkLouderCodex(options: WorkLouderCodexOptions = {}): WorkLo
    * a fresh reading immediately because visibility change probes right away.
    */
   useEffect(() => {
-    if (!watchConnection) return;
+    if (!inputDevicesEnabled || !watchConnection) return;
     const api = window.electronAPI?.workLouderCodex;
     if (!api?.probe) return;
 

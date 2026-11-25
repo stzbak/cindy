@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { isForeground, onForegroundChange } from './foreground';
 import { cloudBusyRetryAfterMs } from '../../../shared/cloudSettingsErrors';
+import { isCloudBackgroundPollersEnabled } from '../../../shared/personalProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getDataOwnerGeneration,
@@ -21,7 +22,9 @@ const READ_RETRY_DELAYS_MS = [250, 1_000, 3_000] as const;
 export function CloudInstanceAccessProvider({ children }: { children: ReactNode }) {
   const { mode, isAuthenticated, isInitializing, canEnterApp, dataOwnerId, dataOwnerGeneration } =
     useAuth();
-  const available = window.electronAPI?.cloudSettings !== undefined;
+  const available =
+    isCloudBackgroundPollersEnabled(window.electronAPI?.platform ?? '') &&
+    window.electronAPI?.cloudSettings !== undefined;
   const scope =
     available && mode === 'cloud' && isAuthenticated && !isInitializing && canEnterApp && dataOwnerId
       ? JSON.stringify([dataOwnerId, dataOwnerGeneration])
