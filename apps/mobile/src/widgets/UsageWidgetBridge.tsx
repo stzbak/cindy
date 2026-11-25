@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { useAuth } from '@/auth/AuthContext';
+import { isUsageWidgetsEnabled } from '@/config/personalProfile';
 import { useDeviceLink } from '@/device-link/DeviceLinkContext';
 import {
   clearUsageWidgetState,
@@ -39,8 +40,9 @@ export function UsageWidgetBridge() {
     }
   }, [initialized, isAuthenticated, userId]);
 
+  const widgetsEnabled = isUsageWidgetsEnabled(Platform.OS);
   useEffect(() => {
-    if (Platform.OS === 'web' || !userId || !isAuthenticated || status !== 'online') return;
+    if (!widgetsEnabled || Platform.OS === 'web' || !userId || !isAuthenticated || status !== 'online') return;
     const generation = accountGeneration;
     let active = true;
     let pending = false;
@@ -75,7 +77,7 @@ export function UsageWidgetBridge() {
 
   // Background refresh: the connection is held only for this one read, like a notification button.
   useEffect(() => {
-    if (!usageWidgetsSupported || !isAuthenticated) return;
+    if (!widgetsEnabled || !usageWidgetsSupported || !isAuthenticated) return;
     const generation = accountGeneration;
     return onUsageWidgetBackgroundRefresh(async () => {
       const id = ++refreshId.current;

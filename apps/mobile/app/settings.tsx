@@ -51,7 +51,13 @@ import {
   simpleScrollScreenSafeAreaEdges,
   usesNativePullDownMenu,
 } from '@/platform/chrome';
-import { isPersonalAndroidUpdateFeedEnabled } from '@/config/personalProfile';
+import {
+  isGiftCardEnabled,
+  isMobileTapdbEnabled,
+  isMobileVoiceSettingsEnabled,
+  isPersonalAndroidUpdateFeedEnabled,
+  isSharedTasksEnabled,
+} from '@/config/personalProfile';
 import {
   APP_BINARY_VERSION,
   AUTH_API_BASE_URL,
@@ -651,9 +657,14 @@ export default function SettingsScreen() {
     }
   }, [analyticsBusy, resumeAnalyticsReporting, t]);
 
+  const voiceSettingsEnabled = isMobileVoiceSettingsEnabled(Platform.OS);
+  const sharedTasksEnabled = isSharedTasksEnabled(Platform.OS);
+  const giftCardEnabled = isGiftCardEnabled(Platform.OS);
+  const analyticsToggleVisible = isMobileTapdbEnabled(Platform.OS);
+
   // 词条数来自本机缓存:进入设置时先把盘上缓存读进内存,查看页刷新后经缓存订阅同步回来。
   useEffect(() => {
-    if (desktopDevices.length === 0) return;
+    if (!voiceSettingsEnabled || desktopDevices.length === 0) return;
     let cancelled = false;
     void Promise.all(desktopDevices.map((host) => hydrateMobileVoiceDictionary(host.deviceId)))
       .then(() => {
@@ -663,11 +674,15 @@ export default function SettingsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [desktopDevices]);
+  }, [desktopDevices, voiceSettingsEnabled]);
 
-  useEffect(() => subscribeMobileVoiceDictionaryCache(() => {
-    setDictionaryRevision((value) => value + 1);
-  }), []);
+  useEffect(() => (
+    voiceSettingsEnabled
+      ? subscribeMobileVoiceDictionaryCache(() => {
+          setDictionaryRevision((value) => value + 1);
+        })
+      : undefined
+  ), [voiceSettingsEnabled]);
 
   const openVoiceDictionary = useCallback(() => {
     push('/settings/voice-dictionary');
@@ -675,8 +690,9 @@ export default function SettingsScreen() {
 
   const speakerFilter = useSyncExternalStore(subscribeMobileSpeakerFilter, getMobileSpeakerFilterSnapshot);
   useEffect(() => {
+    if (!voiceSettingsEnabled) return;
     void hydrateMobileSpeakerFilter();
-  }, []);
+  }, [voiceSettingsEnabled]);
   const openVoiceSpeakerFilter = useCallback(() => {
     push('/settings/voice-speaker-filter');
   }, [push]);
@@ -898,22 +914,24 @@ export default function SettingsScreen() {
         ) : null}
 
         {/* 语音词典:只读查看电脑上的词典(正本在电脑,增删改回电脑做) */}
-        <SettingsGroup
-          footer={t('settings.voiceDictionary.hint')}
-          title={t('settings.voiceDictionary.sectionTitle')}
-        >
-          <ActionInfoRow
-            accessibilityLabel={t('settings.voiceDictionary.openAccessibility')}
-            key="voice-dictionary"
-            label={t('settings.voiceDictionary.label')}
-            onPress={openVoiceDictionary}
-            testID="settings.voiceDictionary.row"
-            value={t('settings.voiceDictionary.entryCount', { count: dictionaryEntries.length })}
-          />
-        </SettingsGroup>
+        {voiceSettingsEnabled ? (
+          <SettingsGroup
+            footer={t('settings.voiceDictionary.hint')}
+            title={t('settings.voiceDictionary.sectionTitle')}
+          >
+            <ActionInfoRow
+              accessibilityLabel={t('settings.voiceDictionary.openAccessibility')}
+              key="voice-dictionary"
+              label={t('settings.voiceDictionary.label')}
+              onPress={openVoiceDictionary}
+              testID="settings.voiceDictionary.row"
+              value={t('settings.voiceDictionary.entryCount', { count: dictionaryEntries.length })}
+            />
+          </SettingsGroup>
+        ) : null}
 
         {/* 识别我的声音:声纹只在本机;老安装包缺原生推理模块时不显示入口 */}
-        {speakerFilter.supported ? (
+        {voiceSettingsEnabled && speakerFilter.supported ? (
           <SettingsGroup
             footer={t('settings.voiceSpeakerFilter.entryHint')}
             title={t('settings.voiceSpeakerFilter.sectionTitle')}
@@ -946,25 +964,29 @@ export default function SettingsScreen() {
         ) : null}
 
         {/* 礼品卡:与外部链接共用根级兑换面板,这里只负责打开。 */}
-        <SettingsGroup footer={t('giftCard.settingsFooter')} testID="settings.giftCard" title={t('giftCard.sectionTitle')}>
-          <ActionInfoRow
-            accessibilityLabel={t('giftCard.action')}
-            chevron={false}
-            label={t('giftCard.action')}
-            onPress={openManualGiftCard}
-            testID="settings.giftCard.redeem"
-          />
-        </SettingsGroup>
+        {giftCardEnabled ? (
+          <SettingsGroup footer={t('giftCard.settingsFooter')} testID="settings.giftCard" title={t('giftCard.sectionTitle')}>
+            <ActionInfoRow
+              accessibilityLabel={t('giftCard.action')}
+              chevron={false}
+              label={t('giftCard.action')}
+              onPress={openManualGiftCard}
+              testID="settings.giftCard.redeem"
+            />
+          </SettingsGroup>
+        ) : null}
 
-        <SettingsGroup title={t('sharedTask.title')}>
-          <ActionInfoRow
-            accessibilityLabel={t('sharedTask.manageSharing')}
-            label={t('sharedTask.manageSharing')}
-            value=""
-            onPress={() => router.push({ pathname: '/shared-session', params: { mode: 'manage' } })}
-            testID="settings.sharedTasks.row"
-          />
-        </SettingsGroup>
+        {sharedTasksEnabled ? (
+          <SettingsGroup title={t('sharedTask.title')}>
+            <ActionInfoRow
+              accessibilityLabel={t('sharedTask.manageSharing')}
+              label={t('sharedTask.manageSharing')}
+              value=""
+              onPress={() => router.push({ pathname: '/shared-session', params: { mode: 'manage' } })}
+              testID="settings.sharedTasks.row"
+            />
+          </SettingsGroup>
+        ) : null}
 
         <PromptRecommendationSettings />
 
@@ -1108,32 +1130,36 @@ export default function SettingsScreen() {
           ) : null}
         </SettingsGroup>
 
-        <SettingsGroup
-          footer={t('settings.legal.analyticsHint')}
-          messages={[analyticsMessage ? { text: analyticsMessage, testID: 'settings.analyticsMessage' } : null]}
-        >
-          <SettingsSwitchRow
-            accessibilityLabel={t('settings.legal.analytics')}
-            disabled={analyticsBusy || !analyticsReady}
-            key="analytics-toggle"
-            label={t('settings.legal.analytics')}
-            onValueChange={() => void toggleAnalytics()}
-            switchTestID="settings.analyticsToggle"
-            testID="settings.analyticsToggleRow"
-            value={analyticsEnabled}
-          />
-        </SettingsGroup>
-        {analyticsCustomized ? (
-          <SettingsGroup>
-            <ActionInfoRow
-              accessibilityLabel={t('settings.legal.analyticsReset')}
-              chevron={false}
-              onPress={() => void resetAnalytics()}
-              label={t('settings.legal.analyticsReset')}
-              testID="settings.analyticsReset"
-              value={t('settings.legal.analyticsResetAction')}
-            />
-          </SettingsGroup>
+        {analyticsToggleVisible ? (
+          <>
+            <SettingsGroup
+              footer={t('settings.legal.analyticsHint')}
+              messages={[analyticsMessage ? { text: analyticsMessage, testID: 'settings.analyticsMessage' } : null]}
+            >
+              <SettingsSwitchRow
+                accessibilityLabel={t('settings.legal.analytics')}
+                disabled={analyticsBusy || !analyticsReady}
+                key="analytics-toggle"
+                label={t('settings.legal.analytics')}
+                onValueChange={() => void toggleAnalytics()}
+                switchTestID="settings.analyticsToggle"
+                testID="settings.analyticsToggleRow"
+                value={analyticsEnabled}
+              />
+            </SettingsGroup>
+            {analyticsCustomized ? (
+              <SettingsGroup>
+                <ActionInfoRow
+                  accessibilityLabel={t('settings.legal.analyticsReset')}
+                  chevron={false}
+                  onPress={() => void resetAnalytics()}
+                  label={t('settings.legal.analyticsReset')}
+                  testID="settings.analyticsReset"
+                  value={t('settings.legal.analyticsResetAction')}
+                />
+              </SettingsGroup>
+            ) : null}
+          </>
         ) : null}
 
         {/* 开发者:Debug 日志、Beta 渠道、标识与更新信息在二级页,按用途分组。 */}

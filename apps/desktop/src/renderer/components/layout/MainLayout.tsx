@@ -158,7 +158,7 @@ import { readRemoteBots } from '@/features/bots/useRemoteBots';
 import { useSessionEntryLocationCommits } from '@/features/bots/useSessionEntryLocationCommits';
 import { islandEntryRouteState, requestIslandEntryAlertDisposal } from '@/features/bots/islandEntryAlert';
 import { requestProviderShareJoin } from '@/features/provider-share/joinIntent';
-import { isCompanionsEnabled, isCompanionCallsEnabled } from '../../../shared/personalProfile';
+import { isCompanionsEnabled, isCompanionCallsEnabled, isSharedTasksEnabled } from '../../../shared/personalProfile';
 import { ProviderShareGlobalHost } from '@/features/provider-share/ProviderShareGlobalHost';
 import { RelayShareGlobalHost } from '@/features/relay-share/RelayShareGlobalHost';
 import { applyScreenshotComposeRequest } from '@/features/region-screenshot/screenshotTaskHandoff';
@@ -283,6 +283,7 @@ function SidebarPinSpacer({ width }: { width: number }) {
 export function MainLayout() {
   const companionCallsEnabled = isCompanionCallsEnabled(window.electronAPI?.platform ?? '');
   const companionsEnabled = isCompanionsEnabled(window.electronAPI?.platform ?? '');
+  const sharedTasksEnabled = isSharedTasksEnabled(window.electronAPI?.platform ?? '');
   useRememberMainEntry();
   // 未处理报错的恢复与已处置收敛不依赖当前路由或侧栏是否挂载。
   usePendingAlertAttention();
@@ -818,6 +819,7 @@ export function MainLayout() {
         return;
       }
       if (payload.type === 'shared-task-join') {
+        if (!sharedTasksEnabled) return;
         setSharedTaskInvitation({ link: payload.link ?? buildSharedTaskInvitationLink(payload.invitation, payload.server), id: ++invitationSequence.current });
         return;
       }
@@ -2133,7 +2135,7 @@ export function MainLayout() {
       {!isSecondaryWindow() && companionsEnabled && <ChatInviteHost />}
       {/* 通话属于应用而不是任务页:切任务、换页面都不卸载;副窗只显示并转发操作。 */}
       {companionCallsEnabled && (isSecondaryWindow() ? <RemoteVoiceCallSurface /> : <GlobalVoiceCallHost />)}
-      {sharedTaskInvitation && !legalTermsGateBlocking && <JoinSharedTaskDialog key={sharedTaskInvitation.id} open initialInvitation={sharedTaskInvitation.link}
+      {sharedTasksEnabled && sharedTaskInvitation && !legalTermsGateBlocking && <JoinSharedTaskDialog key={sharedTaskInvitation.id} open initialInvitation={sharedTaskInvitation.link}
         onOpenChange={(open) => { if (!open) setSharedTaskInvitation(null); }} />}
       {/* 窗口级拖拽兜底:拖 .cshare 进窗口空白处 → 会话导入向导 */}
       <GlobalDropImportListener onOpenShareImport={openShareImport} />

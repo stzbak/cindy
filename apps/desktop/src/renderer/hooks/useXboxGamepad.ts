@@ -6,18 +6,24 @@ import type {
   XboxGamepadSettingsPatch,
   XboxGamepadState,
 } from '../../shared/xboxGamepad';
+import { isInputDevicesEnabled } from '../../shared/personalProfile';
 
 export function useXboxGamepad(
   options: { family?: GamepadFamily; watchConnection?: boolean } = {},
 ) {
   const { family = 'xbox', watchConnection = false } = options;
+  const inputDevicesEnabled = isInputDevicesEnabled(window.electronAPI?.platform ?? '');
   const [state, setState] = useState<XboxGamepadState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(inputDevicesEnabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<'load' | 'save' | null>(null);
   const mountedRef = useRef(true);
 
   const reload = useCallback(async () => {
+    if (!inputDevicesEnabled) {
+      if (mountedRef.current) setLoading(false);
+      return;
+    }
     const api = window.electronAPI?.xboxGamepad;
     if (!api) {
       if (mountedRef.current) {
@@ -43,6 +49,7 @@ export function useXboxGamepad(
   }, [family]);
 
   useEffect(() => {
+    if (!inputDevicesEnabled) return;
     mountedRef.current = true;
     const api = window.electronAPI?.xboxGamepad;
     const unsubscribe = api?.onStateChanged((next) => {
@@ -55,10 +62,10 @@ export function useXboxGamepad(
       mountedRef.current = false;
       unsubscribe?.();
     };
-  }, [family, reload]);
+  }, [family, inputDevicesEnabled, reload]);
 
   useEffect(() => {
-    if (!watchConnection) return;
+    if (!inputDevicesEnabled || !watchConnection) return;
     const api = window.electronAPI?.xboxGamepad;
     if (!api) return;
     const timer = window.setInterval(() => {

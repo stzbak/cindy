@@ -122,7 +122,14 @@ import {
   WINDOW_BACKDROP_MATERIAL_CHANGED_CHANNEL,
 } from '../shared/windowBackdrop.js';
 import { isAllowedBillingMailtoRequest } from '../shared/billing.js';
-import { isCompanionsEnabled, isAuxiliaryWindowPrewarmEnabled, isImBotsEnabled } from '../shared/personalProfile.js';
+import {
+  isCompanionsEnabled,
+  isAuxiliaryWindowPrewarmEnabled,
+  isImBotsEnabled,
+  isInputDevicesEnabled,
+  isPluginMarketAutoSyncEnabled,
+  isDesktopTelemetryEnabled,
+} from '../shared/personalProfile.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { textFilePreviewResult, TEXT_PREVIEW_LIMIT_MB } from './text-file-preview';
@@ -3207,13 +3214,15 @@ authManager.setStableOwnerPostCommitTask(async ({ reason, scopeKey, dataOwnerId 
   if (dataOwnerId === null) return needsRetry ? 'failed' : 'completed';
   if (activeOwnerScopeKey() !== scopeKey || isAppSessionBoundaryPending()) return 'deferred';
   let deferred = false;
-  const marketOutcome = await marketPostCommitStep.run(scopeKey, async () => {
+  if (isPluginMarketAutoSyncEnabled(process.platform)) {
+    const marketOutcome = await marketPostCommitStep.run(scopeKey, async () => {
+      if (!isCurrent()) return 'deferred';
+      return syncDefaultMarketPlugins('owner-ready');
+    });
     if (!isCurrent()) return 'deferred';
-    return syncDefaultMarketPlugins('owner-ready');
-  });
-  if (!isCurrent()) return 'deferred';
-  if (marketOutcome === 'failed') needsRetry = true;
-  if (marketOutcome === 'deferred') deferred = true;
+    if (marketOutcome === 'failed') needsRetry = true;
+    if (marketOutcome === 'deferred') deferred = true;
+  }
 
   const oauthOutcome = await oauthPostCommitStep.run(scopeKey, async () => {
     if (!isCurrent()) return 'deferred';
@@ -4980,7 +4989,9 @@ const createWindow = () => {
     resourceUsagePrewarmTimer.unref?.();
     // 日志上报的启动补传:采集 + 脱敏是同步的重活,必须让主窗口先出来(内部再延迟 15s,
     // 避开首帧的 IO 争用)。没有待补传标记时是零成本 no-op。
-    scheduleStartupBackfill();
+    if (isDesktopTelemetryEnabled(process.platform)) {
+      scheduleStartupBackfill();
+    }
     // `open` may successfully start the updated process while macOS refuses
     // frontmost activation at the lock/login window. Presentation is not an
     // installation-health signal; retain a one-shot focus grant for unlock.
@@ -5021,7 +5032,9 @@ const createWindow = () => {
   });
   installWindowHiddenBroadcast(mainWindow);
   // Keyboard hello when the window comes back from hide / minimize / Dock.
-  attachWorkLouderCodexWindowReveal(mainWindow);
+  if (isInputDevicesEnabled(process.platform)) {
+    attachWorkLouderCodexWindowReveal(mainWindow);
+  }
 
   // App badge 投影当前任务关注总数；窗口聚焦不等于读完所有任务，不清总数。
   // Agent Island smart suppression 同样按 app 级焦点判断:主窗 blur 到「在新窗口打开」
@@ -5209,6 +5222,7 @@ function checkDatabaseSizeWarningAtStartup(): void {
 
 /** Run market discovery and automatic updates for the current stable owner. */
 function syncPluginMarketForActiveOwner(minIntervalMs = 0, trigger: 'foreground' | 'resume' | 'periodic' = 'periodic'): void {
+  if (!isPluginMarketAutoSyncEnabled(process.platform)) return;
   const session = getActiveAppSession();
   if (!session.dataOwnerId || isAppSessionBoundaryPending()) return;
   const scope = activeOwnerScopeKey();
@@ -8107,11 +8121,13 @@ const registerIpcHandlers = () => {
   // 默认插件同步不能依赖用户先打开插件页。启动时本地 owner 已经稳定则立刻
   // 复用市场快照；云端登录/切号的通知可能早于 owner boundary 释放，因此
   // 延迟到当前调用栈结束后再按已提交的新 owner 补跑一次。
-  pluginMarketPeriodicSyncTimer ??= setInterval(
-    () => syncPluginMarketForActiveOwner(PLUGIN_MARKET_PERIODIC_SYNC_MS),
-    PLUGIN_MARKET_PERIODIC_SYNC_MS,
-  );
-  pluginMarketPeriodicSyncTimer.unref();
+  if (isPluginMarketAutoSyncEnabled(process.platform)) {
+    pluginMarketPeriodicSyncTimer ??= setInterval(
+      () => syncPluginMarketForActiveOwner(PLUGIN_MARKET_PERIODIC_SYNC_MS),
+      PLUGIN_MARKET_PERIODIC_SYNC_MS,
+    );
+    pluginMarketPeriodicSyncTimer.unref();
+  }
   // ── Dialog: 目录选择器（v0.6 新增，与旧 show-open-directory-dialog 并存） ──
   ipcMain.handle(
     'dialog:show-open-directory',
@@ -10390,8 +10406,10 @@ app.on('ready', async () => {
 
   registerIpcHandlers();
   rebindDatabaseSizeWarningSettingsWatcher();
-  startInputDeviceRuntime();
-  startInputDevices();
+  if (isInputDevicesEnabled(process.platform)) {
+    startInputDeviceRuntime();
+    startInputDevices();
+  }
   // 本机 FS 目录浏览(项目选择器「添加远程项目」逐级浏览;device-link 经隧道在被控端执行)。
   // 无 DB / 无登录依赖,随其它顶层 handler 一起注册即可。
   registerFsBrowseIpc();
@@ -11057,7 +11075,7 @@ app.on('ready', async () => {
   }, 3_000);
   initUpdateService();
   // 在线人数心跳:App 启动即上报,内部走 deviceId / userId 兜底,登录前后都活
-  if (!hostClientMode) initHeartbeatService();
+  if (!hostClientMode && isDesktopTelemetryEnabled(process.platform)) initHeartbeatService();
   // 设备互联(跨设备远程控制):登录后连 relay,登出即断;开关与设备列表 IPC 一并注册
   let updateRelaunchRemoteBusy = false;
   setUsageWidgetSnapshotReader(readUsageWidgetSnapshot);

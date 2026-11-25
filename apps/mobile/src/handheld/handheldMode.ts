@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
+import { isHandheldModeEnabled } from '@/config/personalProfile';
 
 import { cindyHandheld, type HandheldVoiceKeyPhase } from '../../modules/cindy-handheld/src';
 
@@ -91,7 +92,7 @@ export const DEFAULT_HANDHELD_SETTINGS: HandheldModeSettings = {
 };
 
 export function isHandheldModeSupported(): boolean {
-  return Platform.OS === 'android' && !!cindyHandheld?.available;
+  return isHandheldModeEnabled(Platform.OS) && Platform.OS === 'android' && !!cindyHandheld?.available;
 }
 
 function parseHandheldOverrides(raw: string | null): Partial<HandheldModeSettings> {

@@ -31,7 +31,7 @@ import {
   onVoiceInputReady,
   prewarmVoiceInputProvider,
 } from './index.js';
-import { isAuxiliaryWindowPrewarmEnabled } from '../../shared/personalProfile.js';
+import { isAuxiliaryWindowPrewarmEnabled, isGlobalVoiceInputEnabled } from '../../shared/personalProfile.js';
 import {
   VOICE_INPUT_DICTIONARY_LEARNING_TRACK_TIMEOUT_MS,
 } from '../../shared/voiceInputDictionaryLearning.js';
@@ -486,6 +486,7 @@ let overlayPrewarmSkippedUntilReady = false;
  * the existing cold path.
  */
 export function prewarmGlobalVoiceInputOverlay(): void {
+  if (!isGlobalVoiceInputEnabled(process.platform)) return;
   if (!isAuxiliaryWindowPrewarmEnabled(process.platform)) return;
   if (!(registeredAccelerator ?? registeredNativeShortcutLabel)) return;
   if (getOverlayWindow()) return;
@@ -1640,6 +1641,19 @@ async function setVoiceInputGlobalShortcut(
   shortcut: VoiceInputShortcut | null,
 ): Promise<VoiceInputGlobalResult> {
   if (DISABLE_GLOBAL_SHORTCUTS) return { ok: true };
+  if (!isGlobalVoiceInputEnabled(process.platform)) {
+    if (registeredAccelerator) {
+      globalShortcut.unregister(registeredAccelerator);
+      registeredAccelerator = null;
+    }
+    registeredShortcut = null;
+    registeredNativeShortcutLabel = null;
+    registeredNativeShortcutKey = null;
+    stopNativeShortcutListenerPreservingCapture();
+    windowsFunctionKeyShortcutListener.stop();
+    destroyOverlayWindow();
+    return { ok: true };
+  }
   if (process.platform === 'linux' && shortcut) {
     return {
       ok: false,

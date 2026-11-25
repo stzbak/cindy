@@ -72,7 +72,12 @@ import { useVoiceSpeakerFilterStatus } from '@/hooks/useVoiceSpeakerFilterStatus
 import { getVoiceInputSettings } from '@/hooks/useVoiceInputSettings';
 import { getAgentIslandEnabled, getAgentIslandLiveActivity, getAgentIslandSoundSettings, isAgentIslandSupported, loadAgentIslandLiveActivitySupport, subscribeAgentIslandSettings } from '@/hooks/useAgentIslandSettings';
 import { useCloudInstanceAccess } from '@/features/cloud-settings/CloudInstanceAccess';
-import { isCompanionsEnabled, isImBotsEnabled } from '../../../shared/personalProfile';
+import {
+  isCompanionsEnabled,
+  isGlobalVoiceInputEnabled,
+  isImBotsEnabled,
+  isSharedTasksEnabled,
+} from '../../../shared/personalProfile';
 
 // Keep General available with the route; load other sections only when opened.
 const VoiceInputSection = lazy(() => import('./VoiceInputSection').then(module => ({ default: module.VoiceInputSection })));
@@ -132,8 +137,12 @@ function SettingsViewContent() {
   const wallpaperMotionAvailable = isSceneWallpaper(wallpaperId) ||
     (wallpaperId === 'custom' && isCustomWallpaperVideo(customWallpaperUrl));
   const voiceModelSelection = useVoiceInputModelSelection();
+  const platform = window.electronAPI?.platform ?? '';
+  const globalVoiceInputEnabled = isGlobalVoiceInputEnabled(platform);
+  const sharedTasksEnabled = isSharedTasksEnabled(platform);
   const { status: speakerFilterStatus } = useVoiceSpeakerFilterStatus(
-    (window.electronAPI?.platform === 'darwin' || window.electronAPI?.platform === 'win32') &&
+    globalVoiceInputEnabled &&
+    (platform === 'darwin' || platform === 'win32') &&
     Boolean(window.electronAPI?.voiceInput?.speakerFilter),
   );
   const voiceRefinementEnabled = useSyncExternalStore(subscribeVoiceSettings, getVoiceRefinementEnabled);
@@ -192,6 +201,8 @@ function SettingsViewContent() {
   const activeTab = useMemo<SettingsTab>(() => {
     const raw = rawTab;
     if (!imBotsEnabled && ['im-bot', 'feishu-bot', 'slack-bot', 'tina'].includes(raw ?? '')) return 'general';
+    if (!globalVoiceInputEnabled && raw === 'voice-input') return 'general';
+    if (!sharedTasksEnabled && raw === 'shared-tasks') return 'general';
     // legacy 别名:旧「远端机器」(remote) /「设备互联」(devices) 已并入「远程控制」(remote-control)。
     if (raw === 'remote' || raw === 'devices') return 'remote-control';
     // legacy 别名:旧「飞书机器人」(feishu-bot) /「Slack 机器人」(slack-bot) 已并入「IM 机器人」(im-bot)。
@@ -205,7 +216,7 @@ function SettingsViewContent() {
     // legacy 深链:外观设置原在「通用」、回复动效原在「个性化」,旧 section 深链落到「外观」。
     if (isLegacyAppearanceDeepLink(raw, rawSection)) return 'appearance';
     return isSettingsTab(raw) ? raw : 'general';
-  }, [canAccessBilling, canAccessUsage, isMac, imBotsEnabled, rawSection, rawTab]);
+  }, [canAccessBilling, canAccessUsage, globalVoiceInputEnabled, isMac, imBotsEnabled, rawSection, rawTab, sharedTasksEnabled]);
   const previousTabRef = useRef(activeTab);
   useEffect(() => {
     if (rawTab !== 'task-management') return;
@@ -353,9 +364,11 @@ function SettingsViewContent() {
           (isMac || tabId !== 'agent-island') &&
           (canAccessBilling || tabId !== 'billing') &&
           (imBotsEnabled || tabId !== 'im-bot') &&
+          (globalVoiceInputEnabled || tabId !== 'voice-input') &&
+          (sharedTasksEnabled || tabId !== 'shared-tasks') &&
           (canAccessUsage || tabId !== 'usage'),
       ),
-    [canAccessBilling, canAccessUsage, isMac, imBotsEnabled],
+    [canAccessBilling, canAccessUsage, globalVoiceInputEnabled, isMac, imBotsEnabled, sharedTasksEnabled],
   );
   const searchContext = useMemo<SettingsSearchContext>(() => ({
     locale,
