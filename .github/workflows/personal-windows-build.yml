@@ -24,7 +24,7 @@ env:
   XDT_SKIP_AGENT_BIN_INSTALL: '1'
   ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
   ELECTRON_OVERRIDE_DIST_PATH: '${{ github.workspace }}/.electron-stub-dist'
-  NODE_OPTIONS: '--max-old-space-size=8192'
+  NODE_OPTIONS: '--max-old-space-size=10240'
   CINDY_PERSONAL_BUILD: '1'
   PERSONAL_APP_VERSION: ${{ inputs.version }}
   PERSONAL_BUILD_NUMBER: ${{ inputs.build_number }}
