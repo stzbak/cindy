@@ -4446,7 +4446,7 @@ function CollapsedView({
           active={onBotsRoute}
           aria-description={teammateUnread > 0 ? t('sidebar.teammateUnreadCount', { count: teammateUnread }) : undefined}
           badge={teammateUnread > 0 ? (
-            <NavigationCountBadge count={teammateUnread} label={t('sidebar.teammateUnreadCount', { count: teammateUnread })} />
+            <CountBadge count={teammateUnread} label={t('sidebar.teammateUnreadCount', { count: teammateUnread })} />
           ) : undefined}
           onClick={() => navigateToView('bots')}
         />
