@@ -340,7 +340,9 @@ it('excludes archived group unread state from the app badge', () => {
 
 // bot-group-chat.md, section 8.5: group settings must preserve unread while suppressing system reminders.
 // The archived-group case does not exercise a visible, unread group with notifications disabled (unit).
-it('keeps muted group unread in navigation without adding it to the Windows taskbar badge', () => {
+// Personal Windows disables companions, so the companion navigation has no unread entry
+// to update; the taskbar suppression still has to hold for the remaining task count.
+it('suppresses muted group taskbar attention without a companion navigation entry on Personal Windows', () => {
   vi.stubGlobal('electronAPI', { platform: 'win32', notificationSetAppAttentionCount: state.publish });
   const group = { id: 'group', archived: false, notificationMode: 'all', lastReplyAt: 100 };
   botState.groups = [group];
@@ -352,13 +354,13 @@ it('keeps muted group unread in navigation without adding it to the Windows task
   botState.groups = [{ ...group, notificationMode: 'none' }];
   view.rerender(<AppBadgeAttentionSync />);
   expect(state.publish).toHaveBeenLastCalledWith(expect.objectContaining({ count: 3 }));
-  expect(navigation.result.current.teammates).toBe(1);
+  expect(navigation.result.current.teammates).toBe(0);
 
   state.publish.mockClear();
   botState.groups = [...botState.groups, { id: 'another-muted-group', notificationMode: 'none' }];
   botState.unreadGroups.add('another-muted-group');
   view.rerender(<AppBadgeAttentionSync />);
-  expect(navigation.result.current.teammates).toBe(2);
+  expect(navigation.result.current.teammates).toBe(0);
   expect(state.publish).not.toHaveBeenCalled();
 
   botState.groups = [group, botState.groups[1]];
